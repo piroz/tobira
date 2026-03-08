@@ -9,11 +9,12 @@ description = "tobira - gateway toolkit"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
-dependencies = [
-    "fasttext-wheel>=0.9.2",
-]
+dependencies = []
 
 [project.optional-dependencies]
+fasttext = [
+    "fasttext-wheel>=0.9.2",
+]
 bert = [
     "torch>=2.0",
     "transformers>=4.30",
@@ -22,6 +23,7 @@ bert = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "tobira[fasttext,bert]",
 ]
 
 [project.urls]

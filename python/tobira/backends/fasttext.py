@@ -4,9 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import fasttext
-
 from tobira.backends.protocol import PredictionResult
+
+
+def _import_fasttext():
+    """Lazily import fasttext."""
+    try:
+        import fasttext
+    except ImportError as exc:
+        raise ImportError(
+            "fasttext is required for FastTextBackend. "
+            "Install it with: pip install tobira[fasttext]"
+        ) from exc
+    return fasttext
 
 
 class FastTextBackend:
@@ -18,7 +28,9 @@ class FastTextBackend:
 
     def __init__(self, model_path: str | Path) -> None:
         self._model_path = Path(model_path)
-        self._model = fasttext.load_model(str(self._model_path))
+        if not self._model_path.exists():
+            raise FileNotFoundError(f"model file not found: {self._model_path}")
+        self._model = _import_fasttext().load_model(str(self._model_path))
 
     def predict(self, text: str) -> PredictionResult:
         """Run inference on the given text."""

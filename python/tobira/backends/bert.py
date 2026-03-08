@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
-import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
 from tobira.backends.protocol import PredictionResult
+
+
+def _import_deps() -> tuple:
+    """Lazily import torch and transformers."""
+    try:
+        import torch
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    except ImportError as exc:
+        raise ImportError(
+            "torch and transformers are required for BertBackend. "
+            "Install them with: pip install tobira[bert]"
+        ) from exc
+    return torch, AutoModelForSequenceClassification, AutoTokenizer
 
 
 class BertBackend:
@@ -23,6 +33,8 @@ class BertBackend:
         model_name: str = "tohoku-nlp/bert-base-japanese-v3",
         device: str | None = None,
     ) -> None:
+        torch, AutoModelForSequenceClassification, AutoTokenizer = _import_deps()
+
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self._device = torch.device(device)
@@ -33,6 +45,8 @@ class BertBackend:
 
     def predict(self, text: str) -> PredictionResult:
         """Run inference on the given text."""
+        torch, _, _ = _import_deps()
+
         inputs = self._tokenizer(
             text, return_tensors="pt", truncation=True, max_length=512
         )

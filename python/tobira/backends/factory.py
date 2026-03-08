@@ -28,17 +28,12 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
             "model_path": "/path/to/model.bin",
         })
     """
-    backend_type = config.get("type")
-    if backend_type is None:
-        raise KeyError("config must contain a 'type' key")
+    backend_type = config["type"]
 
     if backend_type == "fasttext":
         from tobira.backends.fasttext import FastTextBackend
 
-        model_path = config.get("model_path")
-        if model_path is None:
-            raise KeyError("fasttext config must contain a 'model_path' key")
-        return FastTextBackend(model_path=model_path)
+        return FastTextBackend(model_path=config["model_path"])
 
     if backend_type == "bert":
         from tobira.backends.bert import BertBackend
