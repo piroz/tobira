@@ -1,0 +1,27 @@
+# Tobira SpamAssassin Plugin Configuration
+# https://github.com/piroz/tobira
+
+# Load the plugin
+loadplugin Mail::SpamAssassin::Plugin::Tobira Tobira.pm
+
+# --- Plugin settings ---
+# tobira_url      http://127.0.0.1:8000/predict
+# tobira_timeout  5
+
+# --- Evaluation rule (triggers API call once) ---
+header   TOBIRA_CHECK  eval:check_tobira()
+score    TOBIRA_CHECK  0.001
+describe TOBIRA_CHECK  Tobira ML spam detection gateway
+
+# --- Spam / Ham rules (set internally by got_hit) ---
+describe TOBIRA_SPAM_HIGH  Tobira: high confidence spam (score >= 0.9)
+score    TOBIRA_SPAM_HIGH  8.0
+
+describe TOBIRA_SPAM_MED   Tobira: medium confidence spam (score >= 0.7)
+score    TOBIRA_SPAM_MED   5.0
+
+describe TOBIRA_SPAM_LOW   Tobira: low confidence spam (score >= 0.5)
+score    TOBIRA_SPAM_LOW   2.0
+
+describe TOBIRA_HAM        Tobira: classified as ham (score < 0.3)
+score    TOBIRA_HAM        -3.0
