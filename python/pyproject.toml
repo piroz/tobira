@@ -1,0 +1,14 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tobira"
+version = "0.0.1"
+description = "tobira - gateway toolkit"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+
+[project.urls]
+Repository = "https://github.com/piroz/tobira"

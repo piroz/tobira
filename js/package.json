@@ -1,0 +1,12 @@
+{
+  "name": "tobira",
+  "version": "0.0.1",
+  "description": "tobira - gateway toolkit",
+  "main": "src/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/piroz/tobira.git"
+  },
+  "license": "MIT",
+  "keywords": ["gateway"]
+}
