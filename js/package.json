@@ -3,10 +3,16 @@
   "version": "0.0.1",
   "description": "tobira - gateway toolkit",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test 'tests/**/*.test.js'"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/piroz/tobira.git"
   },
   "license": "MIT",
-  "keywords": ["gateway"]
+  "keywords": ["gateway", "spam", "classification"]
 }

@@ -1,2 +1,5 @@
-// tobira - gateway toolkit
-module.exports = {};
+"use strict";
+
+const { TobiraClient } = require("./client");
+
+module.exports = { TobiraClient };

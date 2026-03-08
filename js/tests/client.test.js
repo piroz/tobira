@@ -1,0 +1,102 @@
+"use strict";
+
+const { describe, it, beforeEach, afterEach, mock } = require("node:test");
+const assert = require("node:assert/strict");
+const { TobiraClient } = require("../src/client");
+
+describe("TobiraClient", () => {
+  let originalFetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  describe("constructor", () => {
+    it("should strip trailing slashes from baseUrl", () => {
+      const client = new TobiraClient("http://localhost:8000///");
+      assert.equal(client.baseUrl, "http://localhost:8000");
+    });
+
+    it("should use default timeout of 5000ms", () => {
+      const client = new TobiraClient("http://localhost:8000");
+      assert.equal(client.timeout, 5000);
+    });
+
+    it("should accept custom timeout", () => {
+      const client = new TobiraClient("http://localhost:8000", { timeout: 3000 });
+      assert.equal(client.timeout, 3000);
+    });
+  });
+
+  describe("predict", () => {
+    it("should POST to /predict and return result", async () => {
+      const expected = { label: "ham", score: 0.95, labels: { ham: 0.95, spam: 0.05 } };
+      globalThis.fetch = mock.fn(async () => ({
+        ok: true,
+        json: async () => expected,
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      const result = await client.predict("hello world");
+
+      assert.deepEqual(result, expected);
+
+      const call = globalThis.fetch.mock.calls[0];
+      assert.equal(call.arguments[0], "http://localhost:8000/predict");
+      const opts = call.arguments[1];
+      assert.equal(opts.method, "POST");
+      assert.equal(opts.headers["Content-Type"], "application/json");
+      assert.equal(opts.body, JSON.stringify({ text: "hello world" }));
+    });
+
+    it("should throw on non-ok response", async () => {
+      globalThis.fetch = mock.fn(async () => ({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      await assert.rejects(
+        () => client.predict("test"),
+        { message: "tobira API error: 500 Internal Server Error" }
+      );
+    });
+  });
+
+  describe("health", () => {
+    it("should GET /health and return result", async () => {
+      const expected = { status: "ok" };
+      globalThis.fetch = mock.fn(async () => ({
+        ok: true,
+        json: async () => expected,
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      const result = await client.health();
+
+      assert.deepEqual(result, expected);
+
+      const call = globalThis.fetch.mock.calls[0];
+      assert.equal(call.arguments[0], "http://localhost:8000/health");
+    });
+
+    it("should throw on non-ok response", async () => {
+      globalThis.fetch = mock.fn(async () => ({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      await assert.rejects(
+        () => client.health(),
+        { message: "tobira API error: 503 Service Unavailable" }
+      );
+    });
+  });
+});

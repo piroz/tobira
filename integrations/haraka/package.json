@@ -1,0 +1,14 @@
+{
+  "name": "haraka-plugin-tobira",
+  "version": "0.0.1",
+  "description": "Haraka plugin for tobira spam classification",
+  "main": "plugins/tobira.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "tobira": "^0.0.1"
+  },
+  "license": "MIT",
+  "keywords": ["haraka", "plugin", "spam", "tobira"]
+}
