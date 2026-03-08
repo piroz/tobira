@@ -40,4 +40,16 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
             raise KeyError("fasttext config must contain a 'model_path' key")
         return FastTextBackend(model_path=model_path)
 
+    if backend_type == "bert":
+        from tobira.backends.bert import BertBackend
+
+        model_name = config.get("model_name")
+        device = config.get("device")
+        kwargs: dict[str, Any] = {}
+        if model_name is not None:
+            kwargs["model_name"] = model_name
+        if device is not None:
+            kwargs["device"] = device
+        return BertBackend(**kwargs)
+
     raise ValueError(f"unknown backend type: {backend_type!r}")

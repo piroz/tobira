@@ -13,6 +13,12 @@ dependencies = [
     "fasttext-wheel>=0.9.2",
 ]
 
+[project.optional-dependencies]
+bert = [
+    "torch>=2.0",
+    "transformers>=4.30",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
