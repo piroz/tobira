@@ -91,8 +91,13 @@ class TestFastTextBackend:
 
         assert result.label == "spam"
         assert result.score == pytest.approx(0.95)
-        assert result.labels == {"spam": pytest.approx(0.95), "ham": pytest.approx(0.05)}
-        mock_ft.load_model.return_value.predict.assert_called_once_with("buy now!!!", k=-1)
+        assert result.labels == {
+            "spam": pytest.approx(0.95),
+            "ham": pytest.approx(0.05),
+        }
+        mock_ft.load_model.return_value.predict.assert_called_once_with(
+            "buy now!!!", k=-1
+        )
 
     @patch("tobira.backends.fasttext.Path.exists", return_value=True)
     @patch("tobira.backends.fasttext._import_fasttext")
@@ -186,7 +191,9 @@ class TestFactory:
 
     @patch("tobira.backends.fasttext._import_fasttext")
     @patch("tobira.backends.fasttext.Path.exists", return_value=True)
-    def test_fasttext_creation(self, _mock_exists: MagicMock, mock_import: MagicMock) -> None:
+    def test_fasttext_creation(
+        self, _mock_exists: MagicMock, mock_import: MagicMock
+    ) -> None:
         mock_import.return_value = _make_mock_fasttext()
 
         from tobira.backends.fasttext import FastTextBackend
@@ -203,7 +210,9 @@ class TestFactory:
 
         from tobira.backends.bert import BertBackend
 
-        backend = create_backend({"type": "bert", "model_name": "test-model", "device": "cpu"})
+        backend = create_backend(
+            {"type": "bert", "model_name": "test-model", "device": "cpu"}
+        )
         assert isinstance(backend, BertBackend)
 
     @patch("tobira.backends.bert._import_deps")
