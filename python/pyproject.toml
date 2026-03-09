@@ -38,3 +38,9 @@ dev = [
 
 [project.urls]
 Repository = "https://github.com/piroz/tobira"
+
+[tool.ruff]
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

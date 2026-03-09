@@ -1,0 +1,41 @@
+name: JS CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "js/**"
+      - "integrations/haraka/**"
+      - ".github/workflows/js.yml"
+
+jobs:
+  test-sdk:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm test
+
+  test-haraka:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    defaults:
+      run:
+        working-directory: integrations/haraka
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm install
+      - run: npm test

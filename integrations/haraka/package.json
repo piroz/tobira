@@ -6,8 +6,11 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
   "dependencies": {
-    "tobira": "^0.0.1"
+    "tobira": "file:../../js"
   },
   "license": "MIT",
   "keywords": ["haraka", "plugin", "spam", "tobira"]
