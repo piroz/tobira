@@ -137,7 +137,7 @@ describe("tobira haraka plugin", () => {
       });
     });
 
-    it("should call next() on API error", async () => {
+    it("should call next() on API error and add fail result", async () => {
       const predictMock = mock.fn(async () => {
         throw new Error("Connection refused");
       });
@@ -148,6 +148,10 @@ describe("tobira haraka plugin", () => {
         plugin.check_spam.call(ctx, (action) => {
           assert.equal(action, undefined);
           assert.equal(connection.logerror.mock.calls.length, 1);
+          // Verify that results.add was called with fail info
+          const addCall = connection.transaction.results.add.mock.calls[0];
+          assert.equal(addCall.arguments[1].fail, "api_error");
+          assert.equal(addCall.arguments[1].err, "Connection refused");
           resolve();
         }, connection);
       });

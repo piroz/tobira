@@ -51,6 +51,10 @@ exports.check_spam = function (next, connection) {
     })
     .catch((err) => {
       connection.logerror(this, `tobira API error: ${err.message}`);
+      transaction.results.add(this, {
+        fail: "api_error",
+        err: err.message,
+      });
       return next();
     });
 };

@@ -59,7 +59,11 @@ sub check_tobira {
     }
 
     my ($label, $score) = $self->_call_api($url, $timeout, $text);
-    return 0 unless defined $score;
+    unless (defined $score) {
+        dbg("tobira: API call failed, inserting TOBIRA_FAIL");
+        $pms->got_hit("TOBIRA_FAIL", "", score => 0);
+        return 0;
+    }
 
     if ($score >= 0.9) {
         $pms->got_hit("TOBIRA_SPAM_HIGH", "", score => 0);

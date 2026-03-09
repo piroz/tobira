@@ -25,3 +25,7 @@ score    TOBIRA_SPAM_LOW   2.0
 
 describe TOBIRA_HAM        Tobira: classified as ham (score < 0.3)
 score    TOBIRA_HAM        -3.0
+
+# --- Fail-open rule (API error) ---
+describe TOBIRA_FAIL       Tobira: API call failed (fail-open)
+score    TOBIRA_FAIL        0.0
