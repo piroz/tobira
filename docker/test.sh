@@ -33,6 +33,32 @@ json_field() {
 }
 
 # ----------------------------------------------------------------
+# Wait for services to be ready
+# ----------------------------------------------------------------
+echo ""
+echo "Waiting for services to start..."
+
+wait_for() {
+  local name="$1" check_cmd="$2" max_wait="${3:-30}"
+  local elapsed=0
+  while [ $elapsed -lt $max_wait ]; do
+    if eval "$check_cmd" >/dev/null 2>&1; then
+      echo "  $name ready (${elapsed}s)"
+      return 0
+    fi
+    sleep 1
+    ((elapsed++))
+  done
+  echo "  $name not ready after ${max_wait}s"
+  return 1
+}
+
+wait_for "tobira-api" "curl -sf --max-time 2 http://localhost:8000/health"
+wait_for "haraka"     "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',2525)); s.close()\""
+wait_for "rspamd"     "curl -sf --max-time 2 http://localhost:11334/ping"
+wait_for "spamassassin" "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',783)); s.close()\""
+
+# ----------------------------------------------------------------
 # 1. tobira API
 # ----------------------------------------------------------------
 echo ""
