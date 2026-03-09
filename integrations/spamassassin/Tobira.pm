@@ -66,13 +66,13 @@ sub check_tobira {
     }
 
     if ($score >= 0.9) {
-        $pms->got_hit("TOBIRA_SPAM_HIGH", "", score => 0);
+        $pms->got_hit("TOBIRA_SPAM_HIGH", "", ruletype => "header");
     } elsif ($score >= 0.7) {
-        $pms->got_hit("TOBIRA_SPAM_MED", "", score => 0);
+        $pms->got_hit("TOBIRA_SPAM_MED", "", ruletype => "header");
     } elsif ($score >= 0.5) {
-        $pms->got_hit("TOBIRA_SPAM_LOW", "", score => 0);
+        $pms->got_hit("TOBIRA_SPAM_LOW", "", ruletype => "header");
     } elsif ($score < 0.3) {
-        $pms->got_hit("TOBIRA_HAM", "", score => 0);
+        $pms->got_hit("TOBIRA_HAM", "", ruletype => "header");
     }
 
     $pms->set_tag("TOBIRALABEL", $label);

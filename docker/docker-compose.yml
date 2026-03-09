@@ -1,0 +1,46 @@
+services:
+  # Mock tobira API server (rule-based, no ML model needed)
+  tobira-api:
+    build:
+      context: api/
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Haraka MTA with tobira plugin
+  haraka:
+    build:
+      context: ../
+      dockerfile: docker/haraka/Dockerfile
+    ports:
+      - "2525:25"
+    depends_on:
+      tobira-api:
+        condition: service_healthy
+
+  # Rspamd with tobira plugin
+  rspamd:
+    build:
+      context: ../
+      dockerfile: docker/rspamd/Dockerfile
+    ports:
+      - "11333:11333"
+      - "11334:11334"
+    depends_on:
+      tobira-api:
+        condition: service_healthy
+
+  # SpamAssassin with tobira plugin
+  spamassassin:
+    build:
+      context: ../
+      dockerfile: docker/spamassassin/Dockerfile
+    ports:
+      - "783:783"
+    depends_on:
+      tobira-api:
+        condition: service_healthy

@@ -1,0 +1,3 @@
+# tobira API endpoint (Docker service name)
+tobira_url http://tobira-api:8000/predict
+tobira_timeout 5
