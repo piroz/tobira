@@ -9,6 +9,35 @@ on:
       - ".github/workflows/js.yml"
 
 jobs:
+  lint-sdk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run lint
+
+  lint-haraka:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/haraka
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install shared eslint config dependencies
+        run: npm ci
+        working-directory: js
+      - run: npm ci
+      - run: npm run lint
+
   test-sdk:
     runs-on: ubuntu-latest
     strategy:
@@ -37,5 +66,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - run: npm install
+      - run: npm ci
       - run: npm test

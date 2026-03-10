@@ -1,0 +1,35 @@
+name: Docker Integration Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - ".github/workflows/docker.yml"
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start services
+        working-directory: docker
+        run: docker compose up --build -d
+
+      - name: Run integration tests
+        working-directory: docker
+        timeout-minutes: 5
+        run: ./test.sh
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: docker
+        run: docker compose logs
+
+      - name: Cleanup
+        if: always()
+        working-directory: docker
+        run: docker compose down

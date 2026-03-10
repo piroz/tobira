@@ -7,11 +7,22 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "lint": "eslint ."
   },
   "dependencies": {
     "tobira": "file:../../js"
   },
   "license": "MIT",
-  "keywords": ["haraka", "plugin", "spam", "tobira"]
+  "keywords": [
+    "haraka",
+    "plugin",
+    "spam",
+    "tobira"
+  ],
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.3",
+    "globals": "^17.4.0"
+  }
 }

@@ -1,6 +1,6 @@
 "use strict";
 
-const { describe, it, beforeEach, mock } = require("node:test");
+const { describe, it, mock } = require("node:test");
 const assert = require("node:assert/strict");
 
 // We test the plugin by calling its exported functions with a mock context.

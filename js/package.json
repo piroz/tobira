@@ -7,12 +7,22 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "lint": "eslint ."
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/piroz/tobira.git"
   },
   "license": "MIT",
-  "keywords": ["gateway", "spam", "classification"]
+  "keywords": [
+    "gateway",
+    "spam",
+    "classification"
+  ],
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.3",
+    "globals": "^17.4.0"
+  }
 }
