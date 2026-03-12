@@ -1,6 +1,6 @@
 """FastAPI application for spam prediction."""
 
-from typing import Any
+from typing import Any, Optional
 
 from tobira.backends.factory import create_backend
 from tobira.backends.protocol import BackendProtocol
@@ -20,11 +20,17 @@ def _import_deps() -> tuple[Any, Any]:
     return fastapi, uvicorn
 
 
-def create_app(backend: BackendProtocol) -> Any:
+def create_app(
+    backend: BackendProtocol,
+    monitoring: Optional[dict[str, Any]] = None,
+) -> Any:
     """Create a FastAPI application with the given backend.
 
     Args:
         backend: A backend instance implementing BackendProtocol.
+        monitoring: Optional monitoring configuration dict.
+            When ``{"enabled": true}`` is set, prediction metrics are logged
+            to a JSONL file. Accepts an optional ``log_path`` key.
 
     Returns:
         A FastAPI application.
@@ -40,6 +46,12 @@ def create_app(backend: BackendProtocol) -> Any:
         version=tobira.__version__,
     )
     app.state.backend = backend
+
+    if monitoring and monitoring.get("enabled"):
+        from tobira.monitoring.collector import PredictionCollector
+
+        log_path = monitoring.get("log_path", "/var/lib/tobira/predictions.jsonl")
+        app.add_middleware(PredictionCollector, log_path=log_path)
 
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:
@@ -70,6 +82,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     config = load_toml(config_path)
     backend_config = config["backend"]
     backend = create_backend(backend_config)
+    monitoring_config = config.get("monitoring")
 
-    app = create_app(backend)
+    app = create_app(backend, monitoring=monitoring_config)
     uvicorn.run(app, host=host, port=port, access_log=False)
