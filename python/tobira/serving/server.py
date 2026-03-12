@@ -38,15 +38,16 @@ def _load_config(config_path: str) -> dict[str, Any]:
         raise FileNotFoundError(f"config file not found: {config_path}")
 
     if sys.version_info >= (3, 11):
-        import tomllib
+        import tomllib  # type: ignore[import-not-found]
     else:
         try:
             import tomllib  # type: ignore[import-not-found]
         except ModuleNotFoundError:
-            import tomli as tomllib  # type: ignore[no-redef]
+            import tomli as tomllib
 
     with open(path, "rb") as f:
-        return tomllib.load(f)
+        result: dict[str, Any] = tomllib.load(f)
+        return result
 
 
 def create_app(backend: BackendProtocol) -> Any:

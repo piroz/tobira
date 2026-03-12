@@ -33,11 +33,42 @@ evaluation = [
 dev = [
     "pytest>=8.0",
     "httpx>=0.24",
+    "mypy>=1.10",
     "tobira[fasttext,bert,serving,evaluation]",
 ]
 
 [project.urls]
 Repository = "https://github.com/piroz/tobira"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+exclude = ["\\.venv"]
+
+[[tool.mypy.overrides]]
+module = [
+    "fasttext",
+    "transformers",
+    "uvicorn",
+    "tomli",
+    "matplotlib.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "torch",
+    "torch.*",
+]
+ignore_missing_imports = true
+follow_imports = "skip"
 
 [tool.ruff]
 target-version = "py39"

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from tobira.backends.protocol import PredictionResult
 
 
-def _import_fasttext():
+def _import_fasttext() -> Any:
     """Lazily import fasttext."""
     try:
         import fasttext

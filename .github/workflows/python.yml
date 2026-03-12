@@ -20,8 +20,20 @@ jobs:
         with:
           src: python
 
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv run mypy tobira/
+
   test:
-    needs: lint
+    needs: [lint, typecheck]
     runs-on: ubuntu-latest
     defaults:
       run:
