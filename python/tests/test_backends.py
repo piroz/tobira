@@ -697,6 +697,289 @@ class TestPrompts:
         assert "JSON" in SPAM_CLASSIFICATION_SYSTEM
 
 
+class TestTwoStageBackend:
+    def test_first_stage_decides_spam(self) -> None:
+        """First stage score >= high threshold -> first stage result returned."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}
+        )
+        second = MagicMock()
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("buy now!!!")
+
+        assert result.label == "spam"
+        assert result.score == pytest.approx(0.9)
+        first.predict.assert_called_once_with("buy now!!!")
+        second.predict.assert_not_called()
+
+    def test_first_stage_decides_ham(self) -> None:
+        """First stage score <= low threshold -> first stage result returned."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="ham", score=0.2, labels={"spam": 0.2, "ham": 0.8}
+        )
+        second = MagicMock()
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("hello friend")
+
+        assert result.label == "ham"
+        assert result.score == pytest.approx(0.2)
+        second.predict.assert_not_called()
+
+    def test_grey_zone_goes_to_second_stage(self) -> None:
+        """Score in grey zone -> second stage result returned."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="spam", score=0.5, labels={"spam": 0.5, "ham": 0.5}
+        )
+        second = MagicMock()
+        second.predict.return_value = PredictionResult(
+            label="ham", score=0.85, labels={"spam": 0.15, "ham": 0.85}
+        )
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("ambiguous message")
+
+        assert result.label == "ham"
+        assert result.score == pytest.approx(0.85)
+        first.predict.assert_called_once_with("ambiguous message")
+        second.predict.assert_called_once_with("ambiguous message")
+
+    def test_custom_grey_zone(self) -> None:
+        """Custom grey zone thresholds are respected."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="spam", score=0.5, labels={"spam": 0.5, "ham": 0.5}
+        )
+        second = MagicMock()
+        second.predict.return_value = PredictionResult(
+            label="spam", score=0.95, labels={"spam": 0.95, "ham": 0.05}
+        )
+
+        # With narrow grey zone (0.4, 0.6), score=0.5 is still in grey zone
+        backend = TwoStageBackend(
+            first_stage=first, second_stage=second, grey_zone=(0.4, 0.6)
+        )
+        result = backend.predict("test")
+
+        assert result.label == "spam"
+        second.predict.assert_called_once()
+
+    def test_edge_at_high_threshold(self) -> None:
+        """Score exactly at high threshold -> first stage decides."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="spam", score=0.7, labels={"spam": 0.7, "ham": 0.3}
+        )
+        second = MagicMock()
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("test")
+
+        assert result.label == "spam"
+        second.predict.assert_not_called()
+
+    def test_edge_at_low_threshold(self) -> None:
+        """Score exactly at low threshold -> first stage decides."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="spam", score=0.3, labels={"spam": 0.3, "ham": 0.7}
+        )
+        second = MagicMock()
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("test")
+
+        assert result.label == "spam"
+        second.predict.assert_not_called()
+
+    def test_edge_just_inside_grey_zone(self) -> None:
+        """Score just above low threshold -> grey zone, second stage called."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="spam", score=0.31, labels={"spam": 0.31, "ham": 0.69}
+        )
+        second = MagicMock()
+        second.predict.return_value = PredictionResult(
+            label="ham", score=0.8, labels={"spam": 0.2, "ham": 0.8}
+        )
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("test")
+
+        assert result.label == "ham"
+        second.predict.assert_called_once()
+
+    def test_invalid_grey_zone_raises(self) -> None:
+        """Invalid grey zone thresholds raise ValueError."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        second = MagicMock()
+
+        with pytest.raises(ValueError, match="grey_zone must satisfy"):
+            TwoStageBackend(
+                first_stage=first, second_stage=second, grey_zone=(0.7, 0.3)
+            )
+
+        with pytest.raises(ValueError, match="grey_zone must satisfy"):
+            TwoStageBackend(
+                first_stage=first, second_stage=second, grey_zone=(-0.1, 0.5)
+            )
+
+        with pytest.raises(ValueError, match="grey_zone must satisfy"):
+            TwoStageBackend(
+                first_stage=first, second_stage=second, grey_zone=(0.5, 1.1)
+            )
+
+    def test_implements_protocol(self) -> None:
+        from tobira.backends.two_stage import TwoStageBackend
+
+        assert issubclass(TwoStageBackend, BackendProtocol)
+
+    def test_stats_logging(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Statistics are logged at INFO level."""
+        import logging
+
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first = MagicMock()
+        second = MagicMock()
+        second.predict.return_value = PredictionResult(
+            label="ham", score=0.8, labels={"spam": 0.2, "ham": 0.8}
+        )
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+
+        # First call: score=0.9 -> first stage decides
+        first.predict.return_value = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}
+        )
+        with caplog.at_level(logging.INFO, logger="tobira.backends.two_stage"):
+            backend.predict("spam message")
+
+        assert "first_stage_decided=1" in caplog.text
+        assert "100.0%" in caplog.text
+
+        caplog.clear()
+
+        # Second call: score=0.5 -> grey zone
+        first.predict.return_value = PredictionResult(
+            label="spam", score=0.5, labels={"spam": 0.5, "ham": 0.5}
+        )
+        with caplog.at_level(logging.INFO, logger="tobira.backends.two_stage"):
+            backend.predict("ambiguous message")
+
+        assert "first_stage_decided=1" in caplog.text
+        assert "total=2" in caplog.text
+
+
+class TestTwoStageFactory:
+    @patch("tobira.backends.fasttext._import_fasttext")
+    @patch("tobira.backends.fasttext.Path.exists", return_value=True)
+    @patch("tobira.backends.bert._import_deps")
+    def test_two_stage_creation(
+        self,
+        mock_bert_import: MagicMock,
+        _mock_exists: MagicMock,
+        mock_ft_import: MagicMock,
+    ) -> None:
+        mock_ft_import.return_value = _make_mock_fasttext()
+
+        mock_torch = MagicMock()
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.device.return_value = "cpu"
+        mock_bert_import.return_value = (mock_torch, MagicMock(), MagicMock())
+
+        from tobira.backends.two_stage import TwoStageBackend
+
+        backend = create_backend({
+            "type": "two_stage",
+            "first_stage": {
+                "type": "fasttext",
+                "model_path": "/tmp/model.bin",
+            },
+            "second_stage": {
+                "type": "bert",
+                "model_name": "test-model",
+                "device": "cpu",
+            },
+        })
+        assert isinstance(backend, TwoStageBackend)
+
+    @patch("tobira.backends.fasttext._import_fasttext")
+    @patch("tobira.backends.fasttext.Path.exists", return_value=True)
+    @patch("tobira.backends.bert._import_deps")
+    def test_two_stage_custom_grey_zone(
+        self,
+        mock_bert_import: MagicMock,
+        _mock_exists: MagicMock,
+        mock_ft_import: MagicMock,
+    ) -> None:
+        mock_ft_import.return_value = _make_mock_fasttext()
+
+        mock_torch = MagicMock()
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.device.return_value = "cpu"
+        mock_bert_import.return_value = (mock_torch, MagicMock(), MagicMock())
+
+        from tobira.backends.two_stage import TwoStageBackend
+
+        backend = create_backend({
+            "type": "two_stage",
+            "first_stage": {
+                "type": "fasttext",
+                "model_path": "/tmp/model.bin",
+            },
+            "second_stage": {
+                "type": "bert",
+                "model_name": "test-model",
+                "device": "cpu",
+            },
+            "grey_zone": [0.4, 0.6],
+        })
+        assert isinstance(backend, TwoStageBackend)
+
+    def test_two_stage_missing_first_stage_raises(self) -> None:
+        with pytest.raises(KeyError, match="first_stage"):
+            create_backend({
+                "type": "two_stage",
+                "second_stage": {"type": "fasttext", "model_path": "/tmp/m.bin"},
+            })
+
+    @patch("tobira.backends.fasttext._import_fasttext")
+    @patch("tobira.backends.fasttext.Path.exists", return_value=True)
+    def test_two_stage_missing_second_stage_raises(
+        self,
+        _mock_exists: MagicMock,
+        mock_ft_import: MagicMock,
+    ) -> None:
+        mock_ft_import.return_value = _make_mock_fasttext()
+
+        with pytest.raises(KeyError, match="second_stage"):
+            create_backend({
+                "type": "two_stage",
+                "first_stage": {"type": "fasttext", "model_path": "/tmp/m.bin"},
+            })
+
+
 class TestBackendsPublicAPI:
     def test_imports_from_package(self) -> None:
         from tobira.backends import BackendProtocol, PredictionResult, create_backend

@@ -89,4 +89,17 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
             llm_kwargs["timeout"] = timeout
         return LlmApiBackend(**llm_kwargs)
 
+    if backend_type == "two_stage":
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first_stage = create_backend(config["first_stage"])
+        second_stage = create_backend(config["second_stage"])
+        ts_kwargs: dict[str, Any] = {}
+        grey_zone = config.get("grey_zone")
+        if grey_zone is not None:
+            ts_kwargs["grey_zone"] = tuple(grey_zone)
+        return TwoStageBackend(
+            first_stage=first_stage, second_stage=second_stage, **ts_kwargs
+        )
+
     raise ValueError(f"unknown backend type: {backend_type!r}")
