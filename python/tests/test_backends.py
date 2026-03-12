@@ -980,10 +980,240 @@ class TestTwoStageFactory:
             })
 
 
+class TestEnsembleBackend:
+    def test_implements_protocol(self) -> None:
+        from tobira.backends.ensemble import EnsembleBackend
+
+        assert issubclass(EnsembleBackend, BackendProtocol)
+
+    def test_weighted_average_default(self) -> None:
+        """Weighted average with equal weights produces correct average."""
+        from tobira.backends.ensemble import EnsembleBackend
+
+        b1 = MagicMock()
+        b1.predict.return_value = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}
+        )
+        b2 = MagicMock()
+        b2.predict.return_value = PredictionResult(
+            label="spam", score=0.8, labels={"spam": 0.8, "ham": 0.2}
+        )
+
+        backend = EnsembleBackend(backends=[b1, b2])
+        result = backend.predict("buy now!!!")
+
+        assert result.label == "spam"
+        assert result.score == pytest.approx(0.85)
+        assert result.labels["spam"] == pytest.approx(0.85)
+        assert result.labels["ham"] == pytest.approx(0.15)
+
+    def test_weighted_average_custom_weights(self) -> None:
+        """Custom weights are applied correctly."""
+        from tobira.backends.ensemble import EnsembleBackend
+
+        b1 = MagicMock()
+        b1.predict.return_value = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}
+        )
+        b2 = MagicMock()
+        b2.predict.return_value = PredictionResult(
+            label="ham", score=0.4, labels={"spam": 0.4, "ham": 0.6}
+        )
+
+        # Weight b1 three times more than b2
+        backend = EnsembleBackend(backends=[b1, b2], weights=[3.0, 1.0])
+        result = backend.predict("test")
+
+        # Expected: spam = (3*0.9 + 1*0.4) / 4 = 3.1/4 = 0.775
+        assert result.label == "spam"
+        assert result.score == pytest.approx(0.775)
+
+    def test_majority_vote(self) -> None:
+        """Majority vote picks the most common label."""
+        from tobira.backends.ensemble import EnsembleBackend
+
+        b1 = MagicMock()
+        b1.predict.return_value = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}
+        )
+        b2 = MagicMock()
+        b2.predict.return_value = PredictionResult(
+            label="ham", score=0.3, labels={"spam": 0.3, "ham": 0.7}
+        )
+        b3 = MagicMock()
+        b3.predict.return_value = PredictionResult(
+            label="spam", score=0.8, labels={"spam": 0.8, "ham": 0.2}
+        )
+
+        backend = EnsembleBackend(
+            backends=[b1, b2, b3], strategy="majority_vote"
+        )
+        result = backend.predict("test")
+
+        assert result.label == "spam"
+        # Average of b1 and b3 (both voted spam): (0.9+0.8)/2 = 0.85
+        assert result.score == pytest.approx(0.85)
+
+    def test_majority_vote_with_weights(self) -> None:
+        """Weighted majority vote respects weights."""
+        from tobira.backends.ensemble import EnsembleBackend
+
+        b1 = MagicMock()
+        b1.predict.return_value = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}
+        )
+        b2 = MagicMock()
+        b2.predict.return_value = PredictionResult(
+            label="ham", score=0.3, labels={"spam": 0.3, "ham": 0.7}
+        )
+
+        # b2 has heavier weight, so ham wins
+        backend = EnsembleBackend(
+            backends=[b1, b2], weights=[1.0, 3.0], strategy="majority_vote"
+        )
+        result = backend.predict("test")
+
+        assert result.label == "ham"
+
+    def test_partial_failure_fallback(self) -> None:
+        """When some backends fail, remaining results are used."""
+        from tobira.backends.ensemble import EnsembleBackend
+
+        b1 = MagicMock()
+        b1.predict.return_value = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}
+        )
+        b2 = MagicMock()
+        b2.predict.side_effect = RuntimeError("connection error")
+
+        backend = EnsembleBackend(backends=[b1, b2])
+        result = backend.predict("test")
+
+        assert result.label == "spam"
+        assert result.score == pytest.approx(0.9)
+
+    def test_all_backends_fail_raises(self) -> None:
+        """When all backends fail, RuntimeError is raised."""
+        from tobira.backends.ensemble import EnsembleBackend
+
+        b1 = MagicMock()
+        b1.predict.side_effect = RuntimeError("fail 1")
+        b2 = MagicMock()
+        b2.predict.side_effect = RuntimeError("fail 2")
+
+        backend = EnsembleBackend(backends=[b1, b2])
+
+        with pytest.raises(RuntimeError, match="All 2 backends failed"):
+            backend.predict("test")
+
+    def test_requires_at_least_two_backends(self) -> None:
+        from tobira.backends.ensemble import EnsembleBackend
+
+        with pytest.raises(ValueError, match="at least 2"):
+            EnsembleBackend(backends=[MagicMock()])
+
+    def test_weights_length_mismatch_raises(self) -> None:
+        from tobira.backends.ensemble import EnsembleBackend
+
+        with pytest.raises(ValueError, match="weights length"):
+            EnsembleBackend(
+                backends=[MagicMock(), MagicMock()], weights=[1.0]
+            )
+
+    def test_invalid_strategy_raises(self) -> None:
+        from tobira.backends.ensemble import EnsembleBackend
+
+        with pytest.raises(ValueError, match="strategy"):
+            EnsembleBackend(
+                backends=[MagicMock(), MagicMock()],
+                strategy="invalid",  # type: ignore[arg-type]
+            )
+
+    def test_partial_failure_with_weights(self) -> None:
+        """Weights are correctly mapped when a middle backend fails."""
+        from tobira.backends.ensemble import EnsembleBackend
+
+        b1 = MagicMock()
+        b1.predict.return_value = PredictionResult(
+            label="spam", score=0.8, labels={"spam": 0.8, "ham": 0.2}
+        )
+        b2 = MagicMock()
+        b2.predict.side_effect = RuntimeError("fail")
+        b3 = MagicMock()
+        b3.predict.return_value = PredictionResult(
+            label="ham", score=0.4, labels={"spam": 0.4, "ham": 0.6}
+        )
+
+        backend = EnsembleBackend(
+            backends=[b1, b2, b3], weights=[2.0, 1.0, 3.0]
+        )
+        result = backend.predict("test")
+
+        # b1 (weight=2.0) and b3 (weight=3.0) succeed
+        # spam = (2*0.8 + 3*0.4) / 5 = 2.8/5 = 0.56
+        # ham = (2*0.2 + 3*0.6) / 5 = 2.2/5 = 0.44
+        assert result.label == "spam"
+        assert result.score == pytest.approx(0.56)
+
+
+class TestEnsembleFactory:
+    @patch("tobira.backends.fasttext._import_fasttext")
+    @patch("tobira.backends.fasttext.Path.exists", return_value=True)
+    def test_ensemble_creation(
+        self,
+        _mock_exists: MagicMock,
+        mock_ft_import: MagicMock,
+    ) -> None:
+        mock_ft_import.return_value = _make_mock_fasttext()
+
+        from tobira.backends.ensemble import EnsembleBackend
+
+        backend = create_backend({
+            "type": "ensemble",
+            "backends": [
+                {"type": "fasttext", "model_path": "/tmp/model1.bin"},
+                {"type": "fasttext", "model_path": "/tmp/model2.bin"},
+            ],
+        })
+        assert isinstance(backend, EnsembleBackend)
+
+    @patch("tobira.backends.fasttext._import_fasttext")
+    @patch("tobira.backends.fasttext.Path.exists", return_value=True)
+    def test_ensemble_with_options(
+        self,
+        _mock_exists: MagicMock,
+        mock_ft_import: MagicMock,
+    ) -> None:
+        mock_ft_import.return_value = _make_mock_fasttext()
+
+        from tobira.backends.ensemble import EnsembleBackend
+
+        backend = create_backend({
+            "type": "ensemble",
+            "backends": [
+                {"type": "fasttext", "model_path": "/tmp/model1.bin"},
+                {"type": "fasttext", "model_path": "/tmp/model2.bin"},
+            ],
+            "weights": [2.0, 1.0],
+            "strategy": "majority_vote",
+        })
+        assert isinstance(backend, EnsembleBackend)
+
+    def test_ensemble_missing_backends_raises(self) -> None:
+        with pytest.raises(KeyError, match="backends"):
+            create_backend({"type": "ensemble"})
+
+
 class TestBackendsPublicAPI:
     def test_imports_from_package(self) -> None:
-        from tobira.backends import BackendProtocol, PredictionResult, create_backend
+        from tobira.backends import (
+            BackendProtocol,
+            EnsembleBackend,
+            PredictionResult,
+            create_backend,
+        )
 
         assert BackendProtocol is not None
+        assert EnsembleBackend is not None
         assert PredictionResult is not None
         assert create_backend is not None

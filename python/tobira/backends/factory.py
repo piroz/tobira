@@ -102,4 +102,17 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
             first_stage=first_stage, second_stage=second_stage, **ts_kwargs
         )
 
+    if backend_type == "ensemble":
+        from tobira.backends.ensemble import EnsembleBackend
+
+        child_backends = [create_backend(c) for c in config["backends"]]
+        ens_kwargs: dict[str, Any] = {}
+        weights = config.get("weights")
+        if weights is not None:
+            ens_kwargs["weights"] = list(weights)
+        strategy = config.get("strategy")
+        if strategy is not None:
+            ens_kwargs["strategy"] = strategy
+        return EnsembleBackend(backends=child_backends, **ens_kwargs)
+
     raise ValueError(f"unknown backend type: {backend_type!r}")
