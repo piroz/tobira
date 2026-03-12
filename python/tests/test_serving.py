@@ -8,7 +8,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tobira.backends.protocol import BackendProtocol, PredictionResult
-from tobira.serving.schemas import HealthResponse, PredictRequest, PredictResponse
+from tobira.serving.schemas import (
+    MAX_TEXT_LENGTH,
+    HealthResponse,
+    PredictRequest,
+    PredictResponse,
+)
 
 _has_fastapi = True
 try:
@@ -76,6 +81,16 @@ class TestPredict:
         resp = client.post("/predict", json={})
         assert resp.status_code == 422
 
+    def test_predict_text_too_long(self) -> None:
+        from tobira.serving.server import create_app
+
+        app = create_app(_make_mock_backend())
+        client = TestClient(app)
+
+        long_text = "a" * (MAX_TEXT_LENGTH + 1)
+        resp = client.post("/predict", json={"text": long_text})
+        assert resp.status_code == 422
+
 
 @requires_fastapi
 class TestHealth:
@@ -121,6 +136,16 @@ class TestCreateApp:
         app = create_app(_make_mock_backend())
         assert isinstance(app, FastAPI)
 
+    @requires_fastapi
+    def test_openapi_metadata(self) -> None:
+        import tobira
+        from tobira.serving.server import create_app
+
+        app = create_app(_make_mock_backend())
+        assert app.title == "tobira"
+        assert app.description == "Spam prediction API powered by tobira."
+        assert app.version == tobira.__version__
+
     def test_import_error_without_fastapi(self) -> None:
         from tobira.serving.server import _import_deps
 
@@ -141,6 +166,14 @@ class TestSchemaValidation:
     def test_health_response_rejects_missing_status(self) -> None:
         with pytest.raises(Exception):
             HealthResponse()  # type: ignore[call-arg]
+
+    def test_predict_request_rejects_too_long_text(self) -> None:
+        with pytest.raises(Exception):
+            PredictRequest(text="a" * (MAX_TEXT_LENGTH + 1))
+
+    def test_predict_request_accepts_max_length_text(self) -> None:
+        req = PredictRequest(text="a" * MAX_TEXT_LENGTH)
+        assert len(req.text) == MAX_TEXT_LENGTH
 
 
 class TestMain:

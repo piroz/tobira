@@ -61,12 +61,17 @@ def create_app(backend: BackendProtocol) -> Any:
     """
     fastapi, _ = _import_deps()
 
+    import tobira
     from tobira.serving.schemas import HealthResponse, PredictRequest, PredictResponse
 
-    app = fastapi.FastAPI(title="tobira")
+    app = fastapi.FastAPI(
+        title="tobira",
+        description="Spam prediction API powered by tobira.",
+        version=tobira.__version__,
+    )
     app.state.backend = backend
 
-    @app.post("/predict", response_model=PredictResponse)
+    @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:
         result = app.state.backend.predict(req.text)
         return PredictResponse(
@@ -75,7 +80,7 @@ def create_app(backend: BackendProtocol) -> Any:
             labels=result.labels,
         )
 
-    @app.get("/health", response_model=HealthResponse)
+    @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health() -> HealthResponse:
         return HealthResponse(status="ok")
 
