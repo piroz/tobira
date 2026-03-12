@@ -75,6 +75,9 @@ module = [
     "onnxruntime.*",
     "optimum",
     "optimum.*",
+    "spacy",
+    "spacy.*",
+    "ginza",
 ]
 ignore_missing_imports = true
 
