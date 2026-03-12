@@ -29,6 +29,12 @@ evaluation = [
     "matplotlib>=3.5",
 ]
 
+[project.scripts]
+tobira = "tobira.cli:main"
+
+[project.urls]
+Repository = "https://github.com/piroz/tobira"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
@@ -37,9 +43,6 @@ dev = [
     "mypy>=1.10",
     "tobira[fasttext,bert,serving,evaluation]",
 ]
-
-[project.urls]
-Repository = "https://github.com/piroz/tobira"
 
 [tool.mypy]
 python_version = "3.9"
