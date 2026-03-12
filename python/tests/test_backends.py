@@ -117,6 +117,30 @@ class TestFastTextBackend:
         FastTextBackend(model_path="/tmp/model.bin")
         mock_ft.load_model.assert_called_once_with("/tmp/model.bin")
 
+    @patch("tobira.backends.fasttext.Path.exists", return_value=True)
+    @patch("tobira.backends.fasttext._import_fasttext")
+    def test_predict_selects_highest_score(
+        self, mock_import: MagicMock, _mock_exists: MagicMock
+    ) -> None:
+        """Top label must be the one with highest score, not first returned."""
+        mock_ft = MagicMock()
+        mock_model = MagicMock()
+        # Low-score label returned first by fasttext
+        mock_model.predict.return_value = (
+            ["__label__ham", "__label__spam"],
+            [0.30, 0.70],
+        )
+        mock_ft.load_model.return_value = mock_model
+        mock_import.return_value = mock_ft
+
+        from tobira.backends.fasttext import FastTextBackend
+
+        backend = FastTextBackend(model_path="/tmp/model.bin")
+        result = backend.predict("buy now!!!")
+
+        assert result.label == "spam"
+        assert result.score == pytest.approx(0.70)
+
     def test_missing_model_file_raises(self) -> None:
         from tobira.backends.fasttext import FastTextBackend
 

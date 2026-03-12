@@ -43,7 +43,7 @@ class FastTextBackend:
             name = raw_label.replace("__label__", "")
             clean[name] = float(score)
 
-        top_label = next(iter(clean))
+        top_label = max(clean, key=clean.__getitem__)
         top_score = clean[top_label]
 
         return PredictionResult(label=top_label, score=top_score, labels=clean)
