@@ -28,6 +28,11 @@ serving = [
 evaluation = [
     "matplotlib>=3.5",
 ]
+onnx = [
+    "onnxruntime>=1.16",
+    "transformers>=4.30",
+    "optimum>=1.13",
+]
 
 [project.scripts]
 tobira = "tobira.cli:main"
@@ -41,7 +46,7 @@ dev = [
     "pytest-cov>=6.0",
     "httpx>=0.24",
     "mypy>=1.10",
-    "tobira[fasttext,bert,serving,evaluation]",
+    "tobira[fasttext,bert,serving,evaluation,onnx]",
 ]
 
 [tool.mypy]
@@ -63,6 +68,10 @@ module = [
     "uvicorn",
     "tomli",
     "matplotlib.*",
+    "onnxruntime",
+    "onnxruntime.*",
+    "optimum",
+    "optimum.*",
 ]
 ignore_missing_imports = true
 

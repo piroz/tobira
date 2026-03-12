@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from tobira.backends.factory import create_backend
@@ -50,6 +51,11 @@ class TestBackendProtocol:
         from tobira.backends.bert import BertBackend
 
         assert issubclass(BertBackend, BackendProtocol)
+
+    def test_onnx_implements_protocol(self) -> None:
+        from tobira.backends.onnx import OnnxBackend
+
+        assert issubclass(OnnxBackend, BackendProtocol)
 
     def test_custom_class_implements_protocol(self) -> None:
         class DummyBackend:
@@ -259,6 +265,124 @@ class TestBertCpuFallback:
 
         BertBackend(model_name="test-model")
         mock_torch.device.assert_called_with("cpu")
+
+
+class TestOnnxBackend:
+    @patch("tobira.backends.onnx.Path.exists", return_value=True)
+    @patch("tobira.backends.onnx._import_deps")
+    def test_predict(self, mock_import: MagicMock, _mock_exists: MagicMock) -> None:
+        mock_ort = MagicMock()
+        mock_session = MagicMock()
+        mock_input_0 = MagicMock()
+        mock_input_0.name = "input_ids"
+        mock_input_1 = MagicMock()
+        mock_input_1.name = "attention_mask"
+        mock_session.get_inputs.return_value = [mock_input_0, mock_input_1]
+        mock_session.run.return_value = [np.array([[2.0, 0.5]])]
+        mock_ort.InferenceSession.return_value = mock_session
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.return_value = {
+            "input_ids": np.array([[1, 2, 3]]),
+            "attention_mask": np.array([[1, 1, 1]]),
+        }
+
+        MockAutoConfig = MagicMock()
+        mock_config = MagicMock()
+        mock_config.id2label = {0: "spam", 1: "ham"}
+        MockAutoConfig.from_pretrained.return_value = mock_config
+
+        MockAutoTokenizer = MagicMock()
+        MockAutoTokenizer.from_pretrained.return_value = mock_tokenizer
+
+        mock_import.return_value = (mock_ort, np, MockAutoConfig, MockAutoTokenizer)
+
+        from tobira.backends.onnx import OnnxBackend
+
+        backend = OnnxBackend(model_path="/tmp/model.onnx", model_name="test-model")
+        result = backend.predict("buy now!!!")
+
+        assert result.label == "spam"
+        assert result.score > 0.5
+        assert "spam" in result.labels
+        assert "ham" in result.labels
+        assert result.labels["spam"] + result.labels["ham"] == pytest.approx(1.0)
+
+    @patch("tobira.backends.onnx.Path.exists", return_value=True)
+    @patch("tobira.backends.onnx._import_deps")
+    def test_loads_session(
+        self, mock_import: MagicMock, _mock_exists: MagicMock
+    ) -> None:
+        mock_ort = MagicMock()
+        MockAutoConfig = MagicMock()
+        MockAutoTokenizer = MagicMock()
+        mock_import.return_value = (mock_ort, np, MockAutoConfig, MockAutoTokenizer)
+
+        from tobira.backends.onnx import OnnxBackend
+
+        OnnxBackend(model_path="/tmp/model.onnx", model_name="test-model")
+        mock_ort.InferenceSession.assert_called_once_with(
+            "/tmp/model.onnx", providers=["CPUExecutionProvider"]
+        )
+        MockAutoTokenizer.from_pretrained.assert_called_once_with("test-model")
+        MockAutoConfig.from_pretrained.assert_called_once_with("test-model")
+
+    @patch("tobira.backends.onnx._import_deps")
+    def test_missing_model_file_raises(self, mock_import: MagicMock) -> None:
+        mock_ort = MagicMock()
+        mock_import.return_value = (mock_ort, np, MagicMock(), MagicMock())
+
+        from tobira.backends.onnx import OnnxBackend
+
+        with pytest.raises(FileNotFoundError, match="ONNX model file not found"):
+            OnnxBackend(model_path="/nonexistent/model.onnx")
+
+
+class TestOnnxImportError:
+    @patch.dict("sys.modules", {"onnxruntime": None})
+    def test_missing_onnxruntime_raises(self) -> None:
+        from tobira.backends.onnx import _import_deps
+
+        with pytest.raises(ImportError, match="onnxruntime is required"):
+            _import_deps()
+
+
+class TestOnnxFactory:
+    def test_onnx_missing_model_path_raises(self) -> None:
+        with pytest.raises(KeyError, match="model_path"):
+            create_backend({"type": "onnx"})
+
+    @patch("tobira.backends.onnx.Path.exists", return_value=True)
+    @patch("tobira.backends.onnx._import_deps")
+    def test_onnx_creation(
+        self, mock_import: MagicMock, _mock_exists: MagicMock
+    ) -> None:
+        mock_ort = MagicMock()
+        MockAutoConfig = MagicMock()
+        MockAutoTokenizer = MagicMock()
+        mock_import.return_value = (mock_ort, np, MockAutoConfig, MockAutoTokenizer)
+
+        from tobira.backends.onnx import OnnxBackend
+
+        backend = create_backend(
+            {"type": "onnx", "model_path": "/tmp/m.onnx", "model_name": "test-model"}
+        )
+        assert isinstance(backend, OnnxBackend)
+
+    @patch("tobira.backends.onnx.Path.exists", return_value=True)
+    @patch("tobira.backends.onnx._import_deps")
+    def test_onnx_default_model_name(
+        self, mock_import: MagicMock, _mock_exists: MagicMock
+    ) -> None:
+        mock_ort = MagicMock()
+        MockAutoConfig = MagicMock()
+        MockAutoTokenizer = MagicMock()
+        mock_import.return_value = (mock_ort, np, MockAutoConfig, MockAutoTokenizer)
+
+        create_backend({"type": "onnx", "model_path": "/tmp/m.onnx"})
+        MockAutoTokenizer.from_pretrained.assert_called_once_with(
+            "tohoku-nlp/bert-base-japanese-v3"
+        )
 
 
 class TestBackendsPublicAPI:

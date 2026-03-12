@@ -47,4 +47,13 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
             kwargs["device"] = device
         return BertBackend(**kwargs)
 
+    if backend_type == "onnx":
+        from tobira.backends.onnx import OnnxBackend
+
+        onnx_kwargs: dict[str, Any] = {"model_path": config["model_path"]}
+        model_name = config.get("model_name")
+        if model_name is not None:
+            onnx_kwargs["model_name"] = model_name
+        return OnnxBackend(**onnx_kwargs)
+
     raise ValueError(f"unknown backend type: {backend_type!r}")
