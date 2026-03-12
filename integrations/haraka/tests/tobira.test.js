@@ -72,6 +72,23 @@ describe("tobira haraka plugin", () => {
         "check_spam",
       ]);
     });
+
+    it("should use default values when config main is empty", () => {
+      const ctx = {
+        config: {
+          get: mock.fn(() => ({})),
+        },
+        register_hook: mock.fn(),
+      };
+
+      plugin.register.call(ctx);
+
+      assert.ok(ctx.client);
+      assert.equal(ctx.client.baseUrl, "http://127.0.0.1:8000");
+      assert.equal(ctx.client.timeout, 5000);
+      assert.equal(ctx.threshold, 0.5);
+      assert.equal(ctx.rejectSpam, true);
+    });
   });
 
   describe("check_spam", () => {
@@ -188,6 +205,70 @@ describe("tobira haraka plugin", () => {
         assert.equal(ctx.client.predict.mock.calls.length, 0);
         done();
       }, connection);
+    });
+
+    it("should collect text from multipart body with children", async () => {
+      const predictMock = mock.fn(async () => ({
+        label: "ham",
+        score: 0.9,
+        labels: { ham: 0.9, spam: 0.1 },
+      }));
+      const ctx = { client: { predict: predictMock }, threshold: 0.5, rejectSpam: true };
+      const connection = {
+        transaction: {
+          body: {
+            ct: "multipart/mixed",
+            bodytext: "",
+            children: [
+              { ct: "text/plain", bodytext: "Hello", children: [] },
+              { ct: "text/html", bodytext: "<p>World</p>", children: [] },
+            ],
+          },
+          results: { add: mock.fn() },
+        },
+        logerror: mock.fn(),
+      };
+
+      await new Promise((resolve) => {
+        plugin.check_spam.call(ctx, () => {
+          const calledWith = predictMock.mock.calls[0].arguments[0];
+          assert.ok(calledWith.includes("Hello"));
+          assert.ok(calledWith.includes("<p>World</p>"));
+          resolve();
+        }, connection);
+      });
+    });
+
+    it("should skip non-text content types", async () => {
+      const predictMock = mock.fn(async () => ({
+        label: "ham",
+        score: 0.9,
+        labels: { ham: 0.9, spam: 0.1 },
+      }));
+      const ctx = { client: { predict: predictMock }, threshold: 0.5, rejectSpam: true };
+      const connection = {
+        transaction: {
+          body: {
+            ct: "multipart/mixed",
+            bodytext: "",
+            children: [
+              { ct: "text/plain", bodytext: "Visible text", children: [] },
+              { ct: "image/png", bodytext: "binary data", children: [] },
+            ],
+          },
+          results: { add: mock.fn() },
+        },
+        logerror: mock.fn(),
+      };
+
+      await new Promise((resolve) => {
+        plugin.check_spam.call(ctx, () => {
+          const calledWith = predictMock.mock.calls[0].arguments[0];
+          assert.ok(calledWith.includes("Visible text"));
+          assert.ok(!calledWith.includes("binary data"));
+          resolve();
+        }, connection);
+      });
     });
   });
 });

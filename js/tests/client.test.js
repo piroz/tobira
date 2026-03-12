@@ -66,6 +66,34 @@ describe("TobiraClient", () => {
         { message: "tobira API error: 500 Internal Server Error" }
       );
     });
+
+    it("should propagate network errors", async () => {
+      globalThis.fetch = mock.fn(async () => {
+        throw new TypeError("fetch failed");
+      });
+
+      const client = new TobiraClient("http://localhost:8000");
+      await assert.rejects(
+        () => client.predict("test"),
+        { name: "TypeError", message: "fetch failed" }
+      );
+    });
+
+    it("should propagate abort errors on timeout", async () => {
+      globalThis.fetch = mock.fn(async (_url, opts) => {
+        return new Promise((_resolve, reject) => {
+          opts.signal.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        });
+      });
+
+      const client = new TobiraClient("http://localhost:8000", { timeout: 1 });
+      await assert.rejects(
+        () => client.predict("test"),
+        { name: "AbortError" }
+      );
+    });
   });
 
   describe("health", () => {
@@ -96,6 +124,49 @@ describe("TobiraClient", () => {
       await assert.rejects(
         () => client.health(),
         { message: "tobira API error: 503 Service Unavailable" }
+      );
+    });
+
+    it("should send GET request without body", async () => {
+      globalThis.fetch = mock.fn(async () => ({
+        ok: true,
+        json: async () => ({ status: "ok" }),
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      await client.health();
+
+      const call = globalThis.fetch.mock.calls[0];
+      const opts = call.arguments[1];
+      assert.equal(opts.method, undefined);
+      assert.equal(opts.body, undefined);
+    });
+
+    it("should propagate network errors", async () => {
+      globalThis.fetch = mock.fn(async () => {
+        throw new TypeError("fetch failed");
+      });
+
+      const client = new TobiraClient("http://localhost:8000");
+      await assert.rejects(
+        () => client.health(),
+        { name: "TypeError", message: "fetch failed" }
+      );
+    });
+
+    it("should propagate abort errors on timeout", async () => {
+      globalThis.fetch = mock.fn(async (_url, opts) => {
+        return new Promise((_resolve, reject) => {
+          opts.signal.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        });
+      });
+
+      const client = new TobiraClient("http://localhost:8000", { timeout: 1 });
+      await assert.rejects(
+        () => client.health(),
+        { name: "AbortError" }
       );
     });
   });
