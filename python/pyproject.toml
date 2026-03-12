@@ -33,6 +33,9 @@ onnx = [
     "transformers>=4.30",
     "optimum>=1.13",
 ]
+llm = [
+    "httpx>=0.24",
+]
 
 [project.scripts]
 tobira = "tobira.cli:main"
@@ -46,7 +49,7 @@ dev = [
     "pytest-cov>=6.0",
     "httpx>=0.24",
     "mypy>=1.10",
-    "tobira[fasttext,bert,serving,evaluation,onnx]",
+    "tobira[fasttext,bert,serving,evaluation,onnx,llm]",
 ]
 
 [tool.mypy]

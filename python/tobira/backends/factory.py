@@ -56,4 +56,37 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
             onnx_kwargs["model_name"] = model_name
         return OnnxBackend(**onnx_kwargs)
 
+    if backend_type == "ollama":
+        from tobira.backends.ollama import OllamaBackend
+
+        ollama_kwargs: dict[str, Any] = {}
+        model = config.get("model")
+        if model is not None:
+            ollama_kwargs["model"] = model
+        base_url = config.get("base_url")
+        if base_url is not None:
+            ollama_kwargs["base_url"] = base_url
+        timeout = config.get("timeout")
+        if timeout is not None:
+            ollama_kwargs["timeout"] = timeout
+        return OllamaBackend(**ollama_kwargs)
+
+    if backend_type == "llm_api":
+        from tobira.backends.llm_api import LlmApiBackend
+
+        llm_kwargs: dict[str, Any] = {}
+        model = config.get("model")
+        if model is not None:
+            llm_kwargs["model"] = model
+        base_url = config.get("base_url")
+        if base_url is not None:
+            llm_kwargs["base_url"] = base_url
+        api_key = config.get("api_key")
+        if api_key is not None:
+            llm_kwargs["api_key"] = api_key
+        timeout = config.get("timeout")
+        if timeout is not None:
+            llm_kwargs["timeout"] = timeout
+        return LlmApiBackend(**llm_kwargs)
+
     raise ValueError(f"unknown backend type: {backend_type!r}")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -383,6 +384,317 @@ class TestOnnxFactory:
         MockAutoTokenizer.from_pretrained.assert_called_once_with(
             "tohoku-nlp/bert-base-japanese-v3"
         )
+
+
+def _make_mock_ollama_response(label: str = "spam", score: float = 0.95) -> MagicMock:
+    """Create a mock httpx response for Ollama API."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "response": json.dumps({"label": label, "score": score}),
+    }
+    mock_response.raise_for_status = MagicMock()
+    return mock_response
+
+
+def _make_mock_llm_api_response(
+    label: str = "spam", score: float = 0.95
+) -> MagicMock:
+    """Create a mock httpx response for OpenAI-compatible API."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps({"label": label, "score": score}),
+                }
+            }
+        ],
+    }
+    mock_response.raise_for_status = MagicMock()
+    return mock_response
+
+
+class TestOllamaBackend:
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_predict_spam(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_ollama_response("spam", 0.95)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = OllamaBackend(model="gemma2:2b")
+        result = backend.predict("buy now!!!")
+
+        assert result.label == "spam"
+        assert result.score == pytest.approx(0.95)
+        assert result.labels == {
+            "spam": pytest.approx(0.95),
+            "ham": pytest.approx(0.05),
+        }
+
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_predict_ham(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_ollama_response("ham", 0.9)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = OllamaBackend()
+        result = backend.predict("hello friend")
+
+        assert result.label == "ham"
+        assert result.score == pytest.approx(0.9)
+        assert result.labels["spam"] == pytest.approx(0.1)
+
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_calls_correct_endpoint(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_ollama_response()
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = OllamaBackend(
+            model="llama3", base_url="http://myhost:11434"
+        )
+        backend.predict("test")
+
+        call_args = mock_client.post.call_args
+        assert call_args[0][0] == "http://myhost:11434/api/generate"
+        body = call_args[1]["json"]
+        assert body["model"] == "llama3"
+        assert body["format"] == "json"
+        assert body["stream"] is False
+
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_invalid_label_raises(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_ollama_response("unknown", 0.5)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = OllamaBackend()
+        with pytest.raises(ValueError, match="unexpected label"):
+            backend.predict("test")
+
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_score_out_of_range_raises(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_ollama_response("spam", 1.5)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = OllamaBackend()
+        with pytest.raises(ValueError, match="score out of range"):
+            backend.predict("test")
+
+    def test_implements_protocol(self) -> None:
+        from tobira.backends.ollama import OllamaBackend
+
+        assert issubclass(OllamaBackend, BackendProtocol)
+
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_connection_error(self, mock_import: MagicMock) -> None:
+        import httpx
+
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.side_effect = httpx.ConnectError("connection refused")
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = OllamaBackend()
+        with pytest.raises(Exception, match="connection refused"):
+            backend.predict("test")
+
+
+class TestLlmApiBackend:
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_predict_spam(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_llm_api_response("spam", 0.92)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.llm_api import LlmApiBackend
+
+        backend = LlmApiBackend(api_key="test-key")
+        result = backend.predict("buy now!!!")
+
+        assert result.label == "spam"
+        assert result.score == pytest.approx(0.92)
+        assert result.labels == {
+            "spam": pytest.approx(0.92),
+            "ham": pytest.approx(0.08),
+        }
+
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_predict_ham(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_llm_api_response("ham", 0.88)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.llm_api import LlmApiBackend
+
+        backend = LlmApiBackend(api_key="test-key")
+        result = backend.predict("hello")
+
+        assert result.label == "ham"
+        assert result.score == pytest.approx(0.88)
+
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_calls_correct_endpoint(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_llm_api_response()
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.llm_api import LlmApiBackend
+
+        backend = LlmApiBackend(
+            model="gpt-4o",
+            base_url="https://custom.api.com/v1",
+            api_key="sk-test",
+        )
+        backend.predict("test")
+
+        call_args = mock_client.post.call_args
+        assert call_args[0][0] == "https://custom.api.com/v1/chat/completions"
+        assert call_args[1]["headers"]["Authorization"] == "Bearer sk-test"
+        body = call_args[1]["json"]
+        assert body["model"] == "gpt-4o"
+        assert body["response_format"] == {"type": "json_object"}
+
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_missing_api_key_raises(self, mock_import: MagicMock) -> None:
+        mock_import.return_value = MagicMock()
+
+        from tobira.backends.llm_api import LlmApiBackend
+
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(ValueError, match="API key is required"):
+                LlmApiBackend()
+
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_api_key_from_env(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_llm_api_response()
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.llm_api import LlmApiBackend
+
+        with patch.dict("os.environ", {"TOBIRA_LLM_API_KEY": "env-key"}):
+            backend = LlmApiBackend()
+            backend.predict("test")
+
+        call_args = mock_client.post.call_args
+        assert call_args[1]["headers"]["Authorization"] == "Bearer env-key"
+
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_invalid_label_raises(self, mock_import: MagicMock) -> None:
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_llm_api_response("bad", 0.5)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        from tobira.backends.llm_api import LlmApiBackend
+
+        backend = LlmApiBackend(api_key="test-key")
+        with pytest.raises(ValueError, match="unexpected label"):
+            backend.predict("test")
+
+    def test_implements_protocol(self) -> None:
+        from tobira.backends.llm_api import LlmApiBackend
+
+        assert issubclass(LlmApiBackend, BackendProtocol)
+
+
+class TestOllamaImportError:
+    @patch.dict("sys.modules", {"httpx": None})
+    def test_missing_httpx_raises(self) -> None:
+        from tobira.backends.ollama import _import_httpx
+
+        with pytest.raises(ImportError, match="httpx is required"):
+            _import_httpx()
+
+
+class TestLlmApiImportError:
+    @patch.dict("sys.modules", {"httpx": None})
+    def test_missing_httpx_raises(self) -> None:
+        from tobira.backends.llm_api import _import_httpx
+
+        with pytest.raises(ImportError, match="httpx is required"):
+            _import_httpx()
+
+
+class TestOllamaFactory:
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_ollama_creation(self, mock_import: MagicMock) -> None:
+        mock_import.return_value = MagicMock()
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = create_backend({"type": "ollama", "model": "gemma2:2b"})
+        assert isinstance(backend, OllamaBackend)
+
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_ollama_default_model(self, mock_import: MagicMock) -> None:
+        mock_import.return_value = MagicMock()
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = create_backend({"type": "ollama"})
+        assert isinstance(backend, OllamaBackend)
+
+
+class TestLlmApiFactory:
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_llm_api_creation(self, mock_import: MagicMock) -> None:
+        mock_import.return_value = MagicMock()
+
+        from tobira.backends.llm_api import LlmApiBackend
+
+        backend = create_backend(
+            {"type": "llm_api", "model": "gpt-4o", "api_key": "sk-test"}
+        )
+        assert isinstance(backend, LlmApiBackend)
+
+
+class TestPrompts:
+    def test_build_prompt(self) -> None:
+        from tobira.backends.prompts import build_prompt
+
+        result = build_prompt("hello world")
+        assert "hello world" in result
+
+    def test_system_prompt_exists(self) -> None:
+        from tobira.backends.prompts import SPAM_CLASSIFICATION_SYSTEM
+
+        assert "spam" in SPAM_CLASSIFICATION_SYSTEM.lower()
+        assert "JSON" in SPAM_CLASSIFICATION_SYSTEM
 
 
 class TestBackendsPublicAPI:
