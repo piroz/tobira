@@ -32,6 +32,7 @@ evaluation = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=6.0",
     "httpx>=0.24",
     "mypy>=1.10",
     "tobira[fasttext,bert,serving,evaluation]",
@@ -75,3 +76,18 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.coverage.run]
+source = ["tobira"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__",
+]
+
+[tool.pytest.ini_options]
+addopts = "--cov=tobira --cov-report=term-missing"

@@ -127,3 +127,68 @@ class TestCreateApp:
         with patch.dict("sys.modules", {"fastapi": None}):
             with pytest.raises(ImportError, match="serving dependencies"):
                 _import_deps()
+
+
+class TestSchemaValidation:
+    def test_predict_request_rejects_missing_text(self) -> None:
+        with pytest.raises(Exception):
+            PredictRequest()  # type: ignore[call-arg]
+
+    def test_predict_response_rejects_missing_fields(self) -> None:
+        with pytest.raises(Exception):
+            PredictResponse()  # type: ignore[call-arg]
+
+    def test_health_response_rejects_missing_status(self) -> None:
+        with pytest.raises(Exception):
+            HealthResponse()  # type: ignore[call-arg]
+
+
+class TestMain:
+    @requires_fastapi
+    @patch("tobira.serving.server._import_deps")
+    @patch("tobira.serving.server._load_config")
+    @patch("tobira.serving.server.create_backend")
+    @patch("tobira.serving.server.create_app")
+    def test_main_calls_uvicorn(
+        self,
+        mock_create_app: MagicMock,
+        mock_create_backend: MagicMock,
+        mock_load_config: MagicMock,
+        mock_import: MagicMock,
+    ) -> None:
+        from tobira.serving.server import main
+
+        mock_uvicorn = MagicMock()
+        mock_import.return_value = (MagicMock(), mock_uvicorn)
+        mock_load_config.return_value = {"backend": {"type": "fasttext"}}
+        mock_create_backend.return_value = _make_mock_backend()
+        mock_app = MagicMock()
+        mock_create_app.return_value = mock_app
+
+        main("/tmp/config.toml", host="0.0.0.0", port=9000)
+
+        mock_load_config.assert_called_once_with("/tmp/config.toml")
+        mock_uvicorn.run.assert_called_once_with(
+            mock_app, host="0.0.0.0", port=9000, access_log=False
+        )
+
+
+class TestServingLazyImport:
+    def test_lazy_create_app_import(self) -> None:
+        import tobira.serving
+
+        assert hasattr(tobira.serving, "create_app")
+
+    def test_unknown_attr_raises(self) -> None:
+        import tobira.serving
+
+        with pytest.raises(AttributeError, match="has no attribute"):
+            _ = tobira.serving.nonexistent_attr  # type: ignore[attr-defined]
+
+
+class TestVersion:
+    def test_version_exists(self) -> None:
+        import tobira
+
+        assert hasattr(tobira, "__version__")
+        assert isinstance(tobira.__version__, str)

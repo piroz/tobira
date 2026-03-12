@@ -227,3 +227,44 @@ class TestFactory:
         MockAutoTokenizer.from_pretrained.assert_called_once_with(
             "tohoku-nlp/bert-base-japanese-v3"
         )
+
+
+class TestFastTextImportError:
+    @patch.dict("sys.modules", {"fasttext": None})
+    def test_missing_fasttext_raises(self) -> None:
+        from tobira.backends.fasttext import _import_fasttext
+
+        with pytest.raises(ImportError, match="fasttext is required"):
+            _import_fasttext()
+
+
+class TestBertImportError:
+    @patch.dict("sys.modules", {"torch": None})
+    def test_missing_torch_raises(self) -> None:
+        from tobira.backends.bert import _import_deps
+
+        with pytest.raises(ImportError, match="torch and transformers are required"):
+            _import_deps()
+
+
+class TestBertCpuFallback:
+    @patch("tobira.backends.bert._import_deps")
+    def test_cpu_fallback_when_no_cuda(self, mock_import: MagicMock) -> None:
+        mock_torch = MagicMock()
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.device.return_value = "cpu"
+        mock_import.return_value = (mock_torch, MagicMock(), MagicMock())
+
+        from tobira.backends.bert import BertBackend
+
+        BertBackend(model_name="test-model")
+        mock_torch.device.assert_called_with("cpu")
+
+
+class TestBackendsPublicAPI:
+    def test_imports_from_package(self) -> None:
+        from tobira.backends import BackendProtocol, PredictionResult, create_backend
+
+        assert BackendProtocol is not None
+        assert PredictionResult is not None
+        assert create_backend is not None
