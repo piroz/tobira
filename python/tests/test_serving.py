@@ -108,20 +108,20 @@ class TestHealth:
 
 class TestLoadConfig:
     def test_missing_file_raises(self) -> None:
-        from tobira.serving.server import _load_config
+        from tobira.config import load_toml
 
         with pytest.raises(FileNotFoundError, match="config file not found"):
-            _load_config("/nonexistent/config.toml")
+            load_toml("/nonexistent/config.toml")
 
     def test_load_valid_toml(self, tmp_path: Path) -> None:
-        from tobira.serving.server import _load_config
+        from tobira.config import load_toml
 
         config_file = tmp_path / "config.toml"  # type: ignore[operator]
         config_file.write_text(
             '[backend]\ntype = "fasttext"\nmodel_path = "/tmp/m.bin"\n'
         )
 
-        result = _load_config(str(config_file))
+        result = load_toml(str(config_file))
         assert result["backend"]["type"] == "fasttext"
         assert result["backend"]["model_path"] == "/tmp/m.bin"
 
@@ -179,28 +179,28 @@ class TestSchemaValidation:
 class TestMain:
     @requires_fastapi
     @patch("tobira.serving.server._import_deps")
-    @patch("tobira.serving.server._load_config")
+    @patch("tobira.serving.server.load_toml")
     @patch("tobira.serving.server.create_backend")
     @patch("tobira.serving.server.create_app")
     def test_main_calls_uvicorn(
         self,
         mock_create_app: MagicMock,
         mock_create_backend: MagicMock,
-        mock_load_config: MagicMock,
+        mock_load_toml: MagicMock,
         mock_import: MagicMock,
     ) -> None:
         from tobira.serving.server import main
 
         mock_uvicorn = MagicMock()
         mock_import.return_value = (MagicMock(), mock_uvicorn)
-        mock_load_config.return_value = {"backend": {"type": "fasttext"}}
+        mock_load_toml.return_value = {"backend": {"type": "fasttext"}}
         mock_create_backend.return_value = _make_mock_backend()
         mock_app = MagicMock()
         mock_create_app.return_value = mock_app
 
         main("/tmp/config.toml", host="0.0.0.0", port=9000)
 
-        mock_load_config.assert_called_once_with("/tmp/config.toml")
+        mock_load_toml.assert_called_once_with("/tmp/config.toml")
         mock_uvicorn.run.assert_called_once_with(
             mock_app, host="0.0.0.0", port=9000, access_log=False
         )

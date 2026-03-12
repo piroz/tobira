@@ -20,9 +20,13 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     # Register subcommands
-    from tobira.cli.serve import register
+    from tobira.cli.serve import register as register_serve
 
-    register(subparsers)
+    register_serve(subparsers)
+
+    from tobira.cli.doctor import register as register_doctor
+
+    register_doctor(subparsers)
 
     return parser
 

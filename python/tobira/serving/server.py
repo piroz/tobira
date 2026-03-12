@@ -1,11 +1,10 @@
 """FastAPI application for spam prediction."""
 
-import sys
-from pathlib import Path
 from typing import Any
 
 from tobira.backends.factory import create_backend
 from tobira.backends.protocol import BackendProtocol
+from tobira.config import load_toml
 
 
 def _import_deps() -> tuple[Any, Any]:
@@ -19,35 +18,6 @@ def _import_deps() -> tuple[Any, Any]:
             "Install them with: pip install tobira[serving]"
         ) from None
     return fastapi, uvicorn
-
-
-def _load_config(config_path: str) -> dict[str, Any]:
-    """Load a TOML configuration file.
-
-    Args:
-        config_path: Path to the TOML config file.
-
-    Returns:
-        Parsed configuration dict.
-
-    Raises:
-        FileNotFoundError: If the config file does not exist.
-    """
-    path = Path(config_path)
-    if not path.exists():
-        raise FileNotFoundError(f"config file not found: {config_path}")
-
-    if sys.version_info >= (3, 11):
-        import tomllib  # type: ignore[import-not-found]
-    else:
-        try:
-            import tomllib  # type: ignore[import-not-found]
-        except ModuleNotFoundError:
-            import tomli as tomllib
-
-    with open(path, "rb") as f:
-        result: dict[str, Any] = tomllib.load(f)
-        return result
 
 
 def create_app(backend: BackendProtocol) -> Any:
@@ -97,7 +67,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     """
     _, uvicorn = _import_deps()
 
-    config = _load_config(config_path)
+    config = load_toml(config_path)
     backend_config = config["backend"]
     backend = create_backend(backend_config)
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import textwrap
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -101,3 +103,199 @@ class TestHelpOutput:
         with pytest.raises(SystemExit) as exc_info:
             parser.parse_args(["serve", "--help"])
         assert exc_info.value.code == 0
+
+    def test_doctor_help_exits_with_0(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["doctor", "--help"])
+        assert exc_info.value.code == 0
+
+
+# --- doctor subcommand tests ---
+
+
+class TestDoctorParser:
+    def test_parser_has_doctor_subcommand(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["doctor", "--config", "/tmp/c.toml"])
+        assert args.command == "doctor"
+
+    def test_parser_doctor_defaults(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["doctor", "--config", "/tmp/c.toml"])
+        assert args.config == "/tmp/c.toml"
+        assert args.api_url is None
+
+    def test_parser_doctor_with_api_url(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "doctor", "--config", "/tmp/c.toml",
+            "--api-url", "http://localhost:8000",
+        ])
+        assert args.api_url == "http://localhost:8000"
+
+    def test_parser_doctor_missing_config_exits(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["doctor"])
+
+
+class TestDoctorDispatch:
+    @patch("tobira.cli.doctor._run")
+    def test_doctor_dispatches_to_run(self, mock_run: MagicMock) -> None:
+        from tobira.cli import main
+
+        mock_run.return_value = 0
+        result = main(["doctor", "--config", "/tmp/c.toml"])
+
+        assert result == 0
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        assert args.config == "/tmp/c.toml"
+
+
+class TestDoctorChecks:
+    def test_check_config_file_not_found(self) -> None:
+        from tobira.cli.doctor import run_checks
+
+        results = run_checks(config_path="/nonexistent/config.toml")
+        assert results[0] == (False, "config file not found: /nonexistent/config.toml")
+
+    def test_check_config_invalid_toml(self, tmp_path: "os.PathLike[str]") -> None:
+        from tobira.cli.doctor import run_checks
+
+        bad_toml = tmp_path / "bad.toml"  # type: ignore[operator]
+        bad_toml.write_text("[[invalid toml", encoding="utf-8")
+
+        results = run_checks(config_path=str(bad_toml))
+        ok, msg = results[0]
+        assert ok is False
+        assert "invalid TOML syntax" in msg
+
+    def test_check_config_valid_but_no_backend(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from tobira.cli.doctor import run_checks
+
+        toml_file = tmp_path / "ok.toml"  # type: ignore[operator]
+        toml_file.write_text("[server]\nhost = '0.0.0.0'\n", encoding="utf-8")
+
+        results = run_checks(config_path=str(toml_file))
+        # Config check passes
+        assert results[0][0] is True
+        # Backend check fails (no [backend] section)
+        assert results[1] == (False, "missing [backend] section in config")
+
+    @patch("tobira.backends.factory.create_backend")
+    def test_check_backend_success(
+        self, mock_create: MagicMock, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from tobira.cli.doctor import run_checks
+
+        toml_file = tmp_path / "ok.toml"  # type: ignore[operator]
+        toml_content = textwrap.dedent("""\
+            [backend]
+            type = "fasttext"
+            model_path = "/tmp/model.bin"
+        """)
+        toml_file.write_text(toml_content, encoding="utf-8")
+
+        mock_create.return_value = MagicMock()
+        results = run_checks(config_path=str(toml_file))
+
+        assert results[0][0] is True  # config OK
+        assert results[1] == (True, "backend loaded successfully")
+
+    @patch("tobira.backends.factory.create_backend", side_effect=ValueError("bad type"))
+    def test_check_backend_failure(
+        self, mock_create: MagicMock, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from tobira.cli.doctor import run_checks
+
+        toml_file = tmp_path / "ok.toml"  # type: ignore[operator]
+        toml_content = textwrap.dedent("""\
+            [backend]
+            type = "unknown"
+        """)
+        toml_file.write_text(toml_content, encoding="utf-8")
+
+        results = run_checks(config_path=str(toml_file))
+        ok, msg = results[1]
+        assert ok is False
+        assert "backend initialisation failed" in msg
+
+    @patch("tobira.cli.doctor.urlopen")
+    def test_check_api_success(
+        self, mock_urlopen: MagicMock, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from tobira.cli.doctor import run_checks
+
+        toml_file = tmp_path / "ok.toml"  # type: ignore[operator]
+        toml_file.write_text("[server]\n", encoding="utf-8")
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        results = run_checks(
+            config_path=str(toml_file), api_url="http://localhost:8000"
+        )
+        # Find the API check result (after config + backend-missing)
+        api_results = [(ok, msg) for ok, msg in results if "API server" in msg]
+        assert len(api_results) == 1
+        assert api_results[0][0] is True
+
+    def test_check_api_unreachable(self, tmp_path: "os.PathLike[str]") -> None:
+        from tobira.cli.doctor import run_checks
+
+        toml_file = tmp_path / "ok.toml"  # type: ignore[operator]
+        toml_file.write_text("[server]\n", encoding="utf-8")
+
+        results = run_checks(
+            config_path=str(toml_file),
+            api_url="http://localhost:19999",
+        )
+        api_results = [(ok, msg) for ok, msg in results if "API server" in msg]
+        assert len(api_results) == 1
+        assert api_results[0][0] is False
+
+    def test_mta_plugins_not_found(self) -> None:
+        from tobira.cli.doctor import _check_mta_plugins
+
+        results = _check_mta_plugins()
+        # In CI/test environments MTA configs won't exist
+        mta_names = [msg.split(" ")[0] for _, msg in results]
+        assert "rspamd" in mta_names
+        assert "spamassassin" in mta_names
+        assert "haraka" in mta_names
+        assert len(results) == 3
+
+
+class TestDoctorRun:
+    @patch("tobira.cli.doctor.run_checks")
+    def test_run_returns_0_when_all_pass(self, mock_checks: MagicMock) -> None:
+        from tobira.cli import main
+
+        mock_checks.return_value = [(True, "all good")]
+        result = main(["doctor", "--config", "/tmp/c.toml"])
+        assert result == 0
+
+    @patch("tobira.cli.doctor.run_checks")
+    def test_run_returns_1_when_check_fails(self, mock_checks: MagicMock) -> None:
+        from tobira.cli import main
+
+        mock_checks.return_value = [(True, "config OK"), (False, "backend failed")]
+        result = main(["doctor", "--config", "/tmp/c.toml"])
+        assert result == 1
