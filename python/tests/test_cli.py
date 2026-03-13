@@ -617,3 +617,292 @@ class TestInitRunIntegration:
 
         assert result == 0
         assert (output / "tobira.conf").exists()
+
+
+# --- evaluate subcommand tests ---
+
+
+class TestEvaluateParser:
+    def test_parser_has_evaluate_subcommand(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["evaluate", "/tmp/data.csv"])
+        assert args.command == "evaluate"
+
+    def test_parser_evaluate_defaults(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["evaluate", "/tmp/data.csv"])
+        assert args.dataset == "/tmp/data.csv"
+        assert args.config is None
+        assert args.output_format == "text"
+        assert args.plot is None
+        assert args.tune_threshold is False
+
+    def test_parser_evaluate_all_options(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "evaluate", "/tmp/data.jsonl",
+            "--config", "/tmp/c.toml",
+            "--format", "json",
+            "--plot", "/tmp/pr.png",
+            "--tune-threshold",
+        ])
+        assert args.dataset == "/tmp/data.jsonl"
+        assert args.config == "/tmp/c.toml"
+        assert args.output_format == "json"
+        assert args.plot == "/tmp/pr.png"
+        assert args.tune_threshold is True
+
+    def test_parser_evaluate_missing_dataset_exits(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["evaluate"])
+
+    def test_evaluate_help_exits_with_0(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["evaluate", "--help"])
+        assert exc_info.value.code == 0
+
+
+class TestEvaluateDispatch:
+    @patch("tobira.cli.evaluate._run")
+    def test_evaluate_dispatches_to_run(self, mock_run: MagicMock) -> None:
+        from tobira.cli import main
+
+        mock_run.return_value = 0
+        result = main(["evaluate", "/tmp/data.csv"])
+
+        assert result == 0
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        assert args.dataset == "/tmp/data.csv"
+
+
+class TestEvaluateRun:
+    def test_missing_dataset_file(self) -> None:
+        from tobira.cli import main
+
+        result = main(["evaluate", "/nonexistent/data.csv"])
+        assert result == 1
+
+    def test_empty_dataset(self, tmp_path: "os.PathLike[str]") -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        csv_file = Path(str(tmp_path)) / "empty.csv"
+        csv_file.write_text("text,label,score\n", encoding="utf-8")
+
+        result = main(["evaluate", str(csv_file)])
+        assert result == 1
+
+    def test_missing_columns(self, tmp_path: "os.PathLike[str]") -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        csv_file = Path(str(tmp_path)) / "bad.csv"
+        csv_file.write_text("foo,bar\na,b\n", encoding="utf-8")
+
+        result = main(["evaluate", str(csv_file)])
+        assert result == 1
+
+    def test_unsupported_format(self, tmp_path: "os.PathLike[str]") -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        txt_file = Path(str(tmp_path)) / "data.txt"
+        txt_file.write_text("text,label\nhello,1\n", encoding="utf-8")
+
+        result = main(["evaluate", str(txt_file)])
+        assert result == 1
+
+    def test_no_score_no_config_returns_error(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        csv_file = Path(str(tmp_path)) / "data.csv"
+        csv_file.write_text("text,label\nhello,1\nworld,0\n", encoding="utf-8")
+
+        result = main(["evaluate", str(csv_file)])
+        assert result == 1
+
+    def test_csv_with_scores_text_format(
+        self, tmp_path: "os.PathLike[str]", capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        csv_file = Path(str(tmp_path)) / "data.csv"
+        lines = [
+            "text,label,score",
+            "spam msg,1,0.9",
+            "ham msg,0,0.1",
+            "another spam,1,0.8",
+            "another ham,0,0.2",
+        ]
+        csv_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        result = main(["evaluate", str(csv_file)])
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "Evaluation Report" in captured.out
+        assert "F1:" in captured.out
+
+    def test_csv_with_scores_json_format(
+        self, tmp_path: "os.PathLike[str]", capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import json
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        csv_file = Path(str(tmp_path)) / "data.csv"
+        lines = [
+            "text,label,score",
+            "spam msg,1,0.9",
+            "ham msg,0,0.1",
+        ]
+        csv_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        result = main(["evaluate", str(csv_file), "--format", "json"])
+        assert result == 0
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "accuracy" in data
+        assert "f1" in data
+
+    def test_jsonl_with_scores(
+        self, tmp_path: "os.PathLike[str]", capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import json
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        jsonl_file = Path(str(tmp_path)) / "data.jsonl"
+        rows = [
+            {"text": "spam msg", "label": "1", "score": "0.9"},
+            {"text": "ham msg", "label": "0", "score": "0.1"},
+        ]
+        with open(jsonl_file, "w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
+
+        result = main(["evaluate", str(jsonl_file)])
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "Evaluation Report" in captured.out
+
+    def test_tune_threshold(
+        self, tmp_path: "os.PathLike[str]", capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        csv_file = Path(str(tmp_path)) / "data.csv"
+        lines = [
+            "text,label,score",
+            "spam,1,0.9",
+            "ham,0,0.1",
+            "spam2,1,0.7",
+            "ham2,0,0.3",
+        ]
+        csv_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        result = main(["evaluate", str(csv_file), "--tune-threshold"])
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "Optimal threshold" in captured.out
+
+    @patch("tobira.backends.factory.create_backend")
+    def test_backend_inference_mode(
+        self,
+        mock_create: MagicMock,
+        tmp_path: "os.PathLike[str]",
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.backends.protocol import PredictionResult
+        from tobira.cli import main
+
+        # Create config
+        config_file = Path(str(tmp_path)) / "config.toml"
+        config_file.write_text(
+            '[backend]\ntype = "fasttext"\nmodel_path = "/tmp/m.bin"\n',
+            encoding="utf-8",
+        )
+
+        # Create dataset without score column
+        csv_file = Path(str(tmp_path)) / "data.csv"
+        lines = ["text,label", "spam msg,1", "ham msg,0"]
+        csv_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        # Mock backend
+        mock_backend = MagicMock()
+        mock_backend.predict.side_effect = [
+            PredictionResult(label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}),
+            PredictionResult(label="ham", score=0.1, labels={"spam": 0.1, "ham": 0.9}),
+        ]
+        mock_create.return_value = mock_backend
+
+        result = main(["evaluate", str(csv_file), "--config", str(config_file)])
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "Evaluation Report" in captured.out
+        assert mock_backend.predict.call_count == 2
+
+    def test_config_file_not_found(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        csv_file = Path(str(tmp_path)) / "data.csv"
+        lines = ["text,label", "spam,1", "ham,0"]
+        csv_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        result = main([
+            "evaluate", str(csv_file), "--config", "/nonexistent/config.toml"
+        ])
+        assert result == 1
+
+    def test_config_missing_backend_section(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        config_file = Path(str(tmp_path)) / "config.toml"
+        config_file.write_text("[server]\nhost = '0.0.0.0'\n", encoding="utf-8")
+
+        csv_file = Path(str(tmp_path)) / "data.csv"
+        lines = ["text,label", "spam,1", "ham,0"]
+        csv_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        result = main(["evaluate", str(csv_file), "--config", str(config_file)])
+        assert result == 1

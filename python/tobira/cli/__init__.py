@@ -36,6 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_monitor(subparsers)
 
+    from tobira.cli.evaluate import register as register_evaluate
+
+    register_evaluate(subparsers)
+
     return parser
 
 
