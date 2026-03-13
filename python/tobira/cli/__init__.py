@@ -28,6 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_doctor(subparsers)
 
+    from tobira.cli.setup import register as register_init
+
+    register_init(subparsers)
+
     return parser
 
 

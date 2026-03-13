@@ -299,3 +299,321 @@ class TestDoctorRun:
         mock_checks.return_value = [(True, "config OK"), (False, "backend failed")]
         result = main(["doctor", "--config", "/tmp/c.toml"])
         assert result == 1
+
+
+# --- init subcommand tests ---
+
+
+class TestInitParser:
+    def test_parser_has_init_subcommand(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["init"])
+        assert args.command == "init"
+
+    def test_parser_init_defaults(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["init"])
+        assert args.output_dir is None
+        assert args.api_url is None
+
+    def test_parser_init_with_options(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "init",
+            "--output-dir", "/tmp/out",
+            "--api-url", "http://localhost:9000",
+        ])
+        assert args.output_dir == "/tmp/out"
+        assert args.api_url == "http://localhost:9000"
+
+    def test_init_help_exits_with_0(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["init", "--help"])
+        assert exc_info.value.code == 0
+
+
+class TestInitDispatch:
+    @patch("tobira.cli.setup._run")
+    def test_init_dispatches_to_run(self, mock_run: MagicMock) -> None:
+        from tobira.cli import main
+
+        mock_run.return_value = 0
+        result = main(["init"])
+
+        assert result == 0
+        mock_run.assert_called_once()
+
+
+class TestMTADetectors:
+    @patch("tobira.cli.mta_detectors._check_config_dir", return_value=False)
+    @patch("tobira.cli.mta_detectors._check_systemd", return_value=False)
+    @patch("tobira.cli.mta_detectors._check_process", return_value=False)
+    def test_detect_no_mtas(
+        self,
+        mock_proc: MagicMock,
+        mock_sysd: MagicMock,
+        mock_conf: MagicMock,
+    ) -> None:
+        from tobira.cli.mta_detectors import detect_mtas
+
+        result = detect_mtas()
+        assert result == []
+
+    @patch("tobira.cli.mta_detectors._check_config_dir", return_value=False)
+    @patch("tobira.cli.mta_detectors._check_systemd", return_value=False)
+    @patch("tobira.cli.mta_detectors._check_process")
+    def test_detect_single_mta_by_process(
+        self,
+        mock_proc: MagicMock,
+        mock_sysd: MagicMock,
+        mock_conf: MagicMock,
+    ) -> None:
+        from tobira.cli.mta_detectors import detect_mtas
+
+        mock_proc.side_effect = lambda mta: mta == "rspamd"
+        result = detect_mtas()
+        assert len(result) == 1
+        assert result[0].name == "rspamd"
+        assert result[0].source == "process"
+
+    @patch("tobira.cli.mta_detectors._check_config_dir")
+    @patch("tobira.cli.mta_detectors._check_systemd")
+    @patch("tobira.cli.mta_detectors._check_process", return_value=False)
+    def test_detect_mta_by_systemd(
+        self,
+        mock_proc: MagicMock,
+        mock_sysd: MagicMock,
+        mock_conf: MagicMock,
+    ) -> None:
+        from tobira.cli.mta_detectors import detect_mtas
+
+        mock_sysd.side_effect = lambda mta: mta == "haraka"
+        mock_conf.return_value = False
+        result = detect_mtas()
+        assert len(result) == 1
+        assert result[0].name == "haraka"
+        assert result[0].source == "systemd"
+
+    @patch("tobira.cli.mta_detectors._check_config_dir")
+    @patch("tobira.cli.mta_detectors._check_systemd", return_value=False)
+    @patch("tobira.cli.mta_detectors._check_process", return_value=False)
+    def test_detect_mta_by_config_dir(
+        self,
+        mock_proc: MagicMock,
+        mock_sysd: MagicMock,
+        mock_conf: MagicMock,
+    ) -> None:
+        from tobira.cli.mta_detectors import detect_mtas
+
+        mock_conf.side_effect = lambda mta: mta == "spamassassin"
+        result = detect_mtas()
+        assert len(result) == 1
+        assert result[0].name == "spamassassin"
+        assert result[0].source == "config_path"
+
+    @patch("tobira.cli.mta_detectors._check_config_dir", return_value=True)
+    @patch("tobira.cli.mta_detectors._check_systemd", return_value=False)
+    @patch("tobira.cli.mta_detectors._check_process", return_value=False)
+    def test_detect_multiple_mtas(
+        self,
+        mock_proc: MagicMock,
+        mock_sysd: MagicMock,
+        mock_conf: MagicMock,
+    ) -> None:
+        from tobira.cli.mta_detectors import detect_mtas
+
+        result = detect_mtas()
+        assert len(result) == 3
+        names = {d.name for d in result}
+        assert names == {"rspamd", "spamassassin", "haraka"}
+
+
+class TestGenerators:
+    def test_generate_rspamd_configs(self, tmp_path: "os.PathLike[str]") -> None:
+        from pathlib import Path
+
+        from tobira.cli.generators import generate_configs
+
+        output = Path(str(tmp_path))
+        generated = generate_configs(mta="rspamd", output_dir=output)
+
+        assert len(generated) == 2
+        filenames = {p.name for p in generated}
+        assert "tobira.conf" in filenames
+        assert "tobira.lua" in filenames
+
+        # Check content contains default URL
+        conf_content = (output / "tobira.conf").read_text(encoding="utf-8")
+        assert "http://127.0.0.1:8000" in conf_content
+
+    def test_generate_spamassassin_configs(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli.generators import generate_configs
+
+        output = Path(str(tmp_path))
+        generated = generate_configs(mta="spamassassin", output_dir=output)
+
+        assert len(generated) == 2
+        filenames = {p.name for p in generated}
+        assert "tobira.cf" in filenames
+        assert "Tobira.pm" in filenames
+
+    def test_generate_haraka_configs(self, tmp_path: "os.PathLike[str]") -> None:
+        from pathlib import Path
+
+        from tobira.cli.generators import generate_configs
+
+        output = Path(str(tmp_path))
+        generated = generate_configs(mta="haraka", output_dir=output)
+
+        assert len(generated) == 2
+        filenames = {p.name for p in generated}
+        assert "tobira.ini" in filenames
+        assert "tobira.js" in filenames
+
+    def test_generate_with_custom_api_url(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli.generators import generate_configs
+
+        output = Path(str(tmp_path))
+        generate_configs(
+            mta="rspamd",
+            output_dir=output,
+            api_url="http://10.0.0.1:9000",
+        )
+
+        conf_content = (output / "tobira.conf").read_text(encoding="utf-8")
+        assert "http://10.0.0.1:9000" in conf_content
+        assert "http://127.0.0.1:8000" not in conf_content
+
+    def test_generate_unsupported_mta_raises(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli.generators import generate_configs
+
+        output = Path(str(tmp_path))
+        with pytest.raises(ValueError, match="unsupported MTA"):
+            generate_configs(mta="postfix", output_dir=output)
+
+    def test_get_install_instructions(self, tmp_path: "os.PathLike[str]") -> None:
+        from pathlib import Path
+
+        from tobira.cli.generators import get_install_instructions
+
+        output = Path(str(tmp_path))
+        instructions = get_install_instructions(mta="rspamd", output_dir=output)
+
+        assert len(instructions) > 0
+        assert any("sudo cp" in line for line in instructions)
+        assert any("rspamd" in line for line in instructions)
+
+    def test_get_install_instructions_unsupported(self) -> None:
+        from pathlib import Path
+
+        from tobira.cli.generators import get_install_instructions
+
+        instructions = get_install_instructions(mta="postfix", output_dir=Path("/tmp"))
+        assert instructions == []
+
+
+class TestInitRunIntegration:
+    @patch("tobira.cli.setup.detect_mtas")
+    def test_run_init_single_mta_detected(
+        self,
+        mock_detect: MagicMock,
+        tmp_path: "os.PathLike[str]",
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli.mta_detectors import DetectedMTA
+        from tobira.cli.setup import run_init
+
+        mock_detect.return_value = [DetectedMTA(name="rspamd", source="process")]
+
+        output = Path(str(tmp_path))
+        result = run_init(output_dir=output, api_url="http://127.0.0.1:8000")
+
+        assert result == 0
+        assert (output / "tobira.conf").exists()
+        assert (output / "tobira.lua").exists()
+
+    @patch("tobira.cli.setup._prompt_select_mta", return_value="haraka")
+    @patch("tobira.cli.setup.detect_mtas")
+    def test_run_init_multiple_mtas_user_selects(
+        self,
+        mock_detect: MagicMock,
+        mock_prompt: MagicMock,
+        tmp_path: "os.PathLike[str]",
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli.mta_detectors import DetectedMTA
+        from tobira.cli.setup import run_init
+
+        mock_detect.return_value = [
+            DetectedMTA(name="rspamd", source="process"),
+            DetectedMTA(name="haraka", source="systemd"),
+        ]
+
+        output = Path(str(tmp_path))
+        result = run_init(output_dir=output, api_url="http://127.0.0.1:8000")
+
+        assert result == 0
+        assert (output / "tobira.ini").exists()
+        assert (output / "tobira.js").exists()
+        mock_prompt.assert_called_once()
+
+    @patch("tobira.cli.setup._prompt_select_mta", return_value=None)
+    @patch("tobira.cli.setup.detect_mtas")
+    def test_run_init_cancelled(
+        self,
+        mock_detect: MagicMock,
+        mock_prompt: MagicMock,
+    ) -> None:
+        from tobira.cli.mta_detectors import DetectedMTA
+        from tobira.cli.setup import run_init
+
+        mock_detect.return_value = [
+            DetectedMTA(name="rspamd", source="process"),
+            DetectedMTA(name="haraka", source="systemd"),
+        ]
+
+        result = run_init(api_url="http://127.0.0.1:8000")
+        assert result == 1
+
+    @patch("tobira.cli.setup._prompt_select_mta", return_value="rspamd")
+    @patch("tobira.cli.setup.detect_mtas")
+    def test_run_init_no_mtas_manual_select(
+        self,
+        mock_detect: MagicMock,
+        mock_prompt: MagicMock,
+        tmp_path: "os.PathLike[str]",
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli.setup import run_init
+
+        mock_detect.return_value = []
+
+        output = Path(str(tmp_path))
+        result = run_init(output_dir=output, api_url="http://127.0.0.1:8000")
+
+        assert result == 0
+        assert (output / "tobira.conf").exists()
