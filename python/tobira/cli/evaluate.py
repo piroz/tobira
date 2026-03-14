@@ -92,6 +92,13 @@ def register(subparsers: "argparse._SubParsersAction[Any]") -> None:
         default=False,
         help="Find the optimal classification threshold",
     )
+    parser.add_argument(
+        "--benchmark",
+        default=None,
+        metavar="CONFIG",
+        help="Run benchmark suite comparing backends defined in CONFIG (TOML). "
+        "The [benchmarks] section maps backend names to config dicts.",
+    )
     parser.set_defaults(func=_run)
 
 
@@ -189,5 +196,77 @@ def _run(args: argparse.Namespace) -> int:
             print(f"\nPR curve saved to {args.plot}")
         except ImportError as exc:
             print(f"\nWarning: {exc}")
+
+    # Benchmark suite
+    if args.benchmark is not None:
+        return _run_benchmark(args, rows, y_true)
+
+    return 0
+
+
+def _run_benchmark(
+    args: argparse.Namespace,
+    rows: list[dict[str, str]],
+    y_true: list[int],
+) -> int:
+    """Execute the benchmark suite.
+
+    Args:
+        args: Parsed arguments from argparse.
+        rows: Dataset rows with 'text' key.
+        y_true: Ground truth binary labels.
+
+    Returns:
+        Exit code (0 for success, 1 for failure).
+    """
+    from tobira.backends.factory import create_backend
+    from tobira.config import load_toml
+    from tobira.evaluation.benchmark import (
+        BenchmarkConfig,
+        benchmark_to_json,
+        benchmark_to_markdown,
+        run_comparative_benchmark,
+    )
+
+    benchmark_path = Path(args.benchmark)
+    if not benchmark_path.exists():
+        print(f"Error: benchmark config not found: {args.benchmark}")
+        return 1
+
+    try:
+        bench_config = load_toml(args.benchmark)
+    except FileNotFoundError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    if "benchmarks" not in bench_config:
+        print("Error: missing [benchmarks] section in benchmark config")
+        return 1
+
+    benchmarks_section: dict[str, Any] = bench_config["benchmarks"]
+    backends: dict[str, Any] = {}
+    for name, backend_config in benchmarks_section.items():
+        try:
+            backends[name] = create_backend(backend_config)
+        except (ValueError, KeyError) as exc:
+            print(f"Error creating backend '{name}': {exc}")
+            return 1
+
+    texts = [row["text"] for row in rows]
+
+    # Read optional benchmark settings
+    settings = bench_config.get("benchmark_settings", {})
+    cfg = BenchmarkConfig(
+        warmup_runs=settings.get("warmup_runs", 1),
+        num_runs=settings.get("num_runs", 5),
+        threshold=settings.get("threshold", 0.5),
+    )
+
+    results = run_comparative_benchmark(backends, texts, y_true, config=cfg)
+
+    if args.output_format == "json":
+        print(benchmark_to_json(results))
+    else:
+        print(benchmark_to_markdown(results))
 
     return 0

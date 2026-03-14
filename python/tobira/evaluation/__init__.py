@@ -1,5 +1,14 @@
 """tobira.evaluation - model evaluation metrics, reports, and threshold tuning."""
 
+from tobira.evaluation.benchmark import (
+    BenchmarkConfig,
+    BenchmarkResult,
+    LatencyStats,
+    benchmark_to_json,
+    benchmark_to_markdown,
+    run_benchmark,
+    run_comparative_benchmark,
+)
 from tobira.evaluation.metrics import (
     ConfusionMatrix,
     MetricsResult,
@@ -24,11 +33,16 @@ from tobira.evaluation.threshold import (
 )
 
 __all__ = [
+    "BenchmarkConfig",
+    "BenchmarkResult",
     "ConfusionMatrix",
+    "LatencyStats",
     "MetricsResult",
     "MulticlassMetricsResult",
     "PerClassMetrics",
     "ThresholdResult",
+    "benchmark_to_json",
+    "benchmark_to_markdown",
     "compute_metrics",
     "compute_multiclass_metrics",
     "confusion_matrix",
@@ -39,6 +53,8 @@ __all__ = [
     "multiclass_to_text",
     "plot_pr_curve",
     "pr_curve_data",
+    "run_benchmark",
+    "run_comparative_benchmark",
     "to_json",
     "to_text",
 ]
