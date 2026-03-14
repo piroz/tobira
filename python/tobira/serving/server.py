@@ -51,7 +51,16 @@ def create_app(
         from tobira.monitoring.collector import PredictionCollector
 
         log_path = monitoring.get("log_path", "/var/lib/tobira/predictions.jsonl")
-        app.add_middleware(PredictionCollector, log_path=log_path)
+        redis_url = monitoring.get("redis_url")
+        redis_key_prefix = monitoring.get("redis_key_prefix", "tobira:scores")
+        redis_window = monitoring.get("redis_window_seconds", 86400)
+        app.add_middleware(
+            PredictionCollector,
+            log_path=log_path,
+            redis_url=redis_url,
+            redis_key_prefix=redis_key_prefix,
+            redis_window_seconds=redis_window,
+        )
 
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:

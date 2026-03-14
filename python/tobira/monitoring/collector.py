@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 from tobira.monitoring.store import append_record
 
 _DEFAULT_LOG_PATH = "/var/lib/tobira/predictions.jsonl"
+
+logger = logging.getLogger(__name__)
 
 
 class PredictionCollector:
@@ -18,15 +21,43 @@ class PredictionCollector:
     The logged record contains *timestamp*, *label*, *score*, and *latency_ms*.
     The request text is **never** logged for privacy protection.
 
+    When a ``redis_url`` is provided, prediction scores are also pushed to a
+    :class:`~tobira.monitoring.store.RedisScoreStore` for real-time drift
+    detection.
+
     Args:
         app: The ASGI application.
         log_path: Path to the JSONL log file. Defaults to
             ``/var/lib/tobira/predictions.jsonl``.
+        redis_url: Optional Redis connection URL for score accumulation.
+        redis_key_prefix: Key prefix for Redis score storage.
+        redis_window_seconds: Score retention window in seconds.
     """
 
-    def __init__(self, app: Any, log_path: str = _DEFAULT_LOG_PATH) -> None:
+    def __init__(
+        self,
+        app: Any,
+        log_path: str = _DEFAULT_LOG_PATH,
+        redis_url: str | None = None,
+        redis_key_prefix: str = "tobira:scores",
+        redis_window_seconds: int = 86400,
+    ) -> None:
         self.app = app
         self.log_path = log_path
+        self._redis_store: Any = None
+        if redis_url:
+            try:
+                from tobira.monitoring.store import RedisScoreStore
+
+                self._redis_store = RedisScoreStore(
+                    redis_url=redis_url,
+                    key_prefix=redis_key_prefix,
+                    window_seconds=redis_window_seconds,
+                )
+            except ImportError:
+                logger.warning(
+                    "redis package not installed; Redis score accumulation disabled"
+                )
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         is_predict = (
@@ -66,10 +97,18 @@ class PredictionCollector:
         except (json.JSONDecodeError, ValueError):
             return
 
+        now = datetime.now(timezone.utc)
+        score = data.get("score")
         record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now.isoformat(),
             "label": data.get("label"),
-            "score": data.get("score"),
+            "score": score,
             "latency_ms": latency_ms,
         }
         append_record(self.log_path, record)
+
+        if self._redis_store is not None and isinstance(score, (int, float)):
+            try:
+                self._redis_store.push_score(float(score), now.timestamp())
+            except Exception:
+                logger.debug("Failed to push score to Redis", exc_info=True)

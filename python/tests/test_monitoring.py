@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -19,6 +19,14 @@ from tobira.monitoring.analyzer import (
     analyze,
     compute_ks,
     compute_psi,
+)
+from tobira.monitoring.drift import (
+    DriftResult,
+    compute_ks_test,
+    detect_drift,
+)
+from tobira.monitoring.drift import (
+    compute_psi as drift_compute_psi,
 )
 from tobira.monitoring.store import append_record, read_records
 
@@ -248,6 +256,16 @@ class TestMonitoringLazyImport:
 
         assert hasattr(tobira.monitoring, "analyze")
 
+    def test_lazy_detect_drift_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "detect_drift")
+
+    def test_lazy_analyze_drift_from_redis_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "analyze_drift_from_redis")
+
 
 # ── analyzer helper ─────────────────────────────────────────────
 
@@ -416,6 +434,225 @@ class TestAnalyzerDataclasses:
 
 
 # ── monitor command tests ───────────────────────────────────────
+
+
+# ── drift module tests ─────────────────────────────────────────
+
+
+class TestDriftComputePSI:
+    def test_identical_distributions_returns_zero(self) -> None:
+        scores = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        result = drift_compute_psi(scores, scores)
+        assert result == pytest.approx(0.0, abs=0.01)
+
+    def test_shifted_distribution_returns_positive(self) -> None:
+        baseline = [0.1, 0.15, 0.2, 0.25, 0.3] * 20
+        current = [0.6, 0.65, 0.7, 0.75, 0.8] * 20
+        result = drift_compute_psi(baseline, current)
+        assert result > 0.0
+
+    def test_constant_scores_returns_zero(self) -> None:
+        result = drift_compute_psi([0.5] * 10, [0.5] * 10)
+        assert result == 0.0
+
+    def test_empty_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            drift_compute_psi([], [0.5])
+
+    def test_custom_bins(self) -> None:
+        baseline = [0.1, 0.2, 0.3, 0.4, 0.5] * 10
+        current = [0.5, 0.6, 0.7, 0.8, 0.9] * 10
+        result = drift_compute_psi(baseline, current, bins=5)
+        assert result > 0.0
+
+
+class TestDriftComputeKSTest:
+    def test_identical_distributions(self) -> None:
+        scores = [0.1, 0.2, 0.3, 0.4, 0.5]
+        stat, pvalue = compute_ks_test(scores, scores)
+        assert stat == pytest.approx(0.0)
+        assert pvalue == pytest.approx(1.0)
+
+    def test_different_distributions(self) -> None:
+        baseline = [0.1, 0.2, 0.3, 0.4, 0.5] * 20
+        current = [0.6, 0.7, 0.8, 0.9, 1.0] * 20
+        stat, pvalue = compute_ks_test(baseline, current)
+        assert stat > 0.0
+        assert pvalue < 0.05
+
+    def test_empty_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            compute_ks_test([], [0.5])
+
+    def test_returns_tuple(self) -> None:
+        result = compute_ks_test([0.1, 0.5], [0.2, 0.6])
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+
+class TestDetectDrift:
+    def test_no_drift_with_identical(self) -> None:
+        scores = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        result = detect_drift(scores, scores)
+        assert not result.drifted
+        assert result.psi_level == "ok"
+
+    def test_drift_with_shifted(self) -> None:
+        baseline = [0.1, 0.15, 0.2, 0.25, 0.3] * 20
+        current = [0.6, 0.65, 0.7, 0.75, 0.8] * 20
+        result = detect_drift(baseline, current)
+        assert result.drifted
+        assert result.psi_level in ("warning", "alert")
+
+    def test_custom_psi_threshold(self) -> None:
+        baseline = [0.1, 0.2, 0.3, 0.4, 0.5] * 10
+        current = [0.15, 0.25, 0.35, 0.45, 0.55] * 10
+        # With very high threshold, PSI alone won't trigger drift
+        result_high = detect_drift(baseline, current, psi_threshold=10.0)
+        result_low = detect_drift(baseline, current, psi_threshold=0.001)
+        # High threshold should be less likely to flag drift via PSI
+        assert result_high.psi == result_low.psi
+
+    def test_result_is_frozen(self) -> None:
+        result = DriftResult(
+            psi=0.1, psi_level="ok",
+            ks_statistic=0.05, ks_pvalue=0.5, drifted=False,
+        )
+        with pytest.raises(AttributeError):
+            result.psi = 0.2  # type: ignore[misc]
+
+    def test_result_fields(self) -> None:
+        baseline = [0.1, 0.2, 0.3, 0.4, 0.5] * 10
+        current = [0.1, 0.2, 0.3, 0.4, 0.5] * 10
+        result = detect_drift(baseline, current)
+        assert isinstance(result.psi, float)
+        assert result.psi_level in ("ok", "warning", "alert")
+        assert isinstance(result.ks_statistic, float)
+        assert isinstance(result.ks_pvalue, float)
+        assert isinstance(result.drifted, bool)
+
+
+# ── Redis score store tests ───────────────────────────────────
+
+
+class TestRedisScoreStore:
+    def _make_mock_redis(self) -> MagicMock:
+        """Create a mock Redis client."""
+        mock_redis = MagicMock()
+        mock_redis.zadd = MagicMock()
+        mock_redis.zrangebyscore = MagicMock(return_value=[])
+        mock_redis.zremrangebyscore = MagicMock()
+        mock_redis.delete = MagicMock()
+        mock_redis.pipeline = MagicMock(return_value=MagicMock())
+        return mock_redis
+
+    @patch("tobira.monitoring.store.RedisScoreStore.__init__", return_value=None)
+    def test_push_score(self, mock_init: MagicMock) -> None:
+        from tobira.monitoring.store import RedisScoreStore
+
+        store = RedisScoreStore.__new__(RedisScoreStore)
+        mock_client = self._make_mock_redis()
+        store._client = mock_client
+        store._scores_key = "tobira:scores:current"
+        store._baseline_key = "tobira:scores:baseline"
+        store._window_seconds = 86400
+
+        store.push_score(0.95, timestamp=1000.0)
+
+        mock_client.zadd.assert_called_once()
+        call_args = mock_client.zadd.call_args
+        assert call_args[0][0] == "tobira:scores:current"
+        member_dict = call_args[0][1]
+        assert "1000.0:0.95" in member_dict
+
+    @patch("tobira.monitoring.store.RedisScoreStore.__init__", return_value=None)
+    def test_get_scores(self, mock_init: MagicMock) -> None:
+        from tobira.monitoring.store import RedisScoreStore
+
+        store = RedisScoreStore.__new__(RedisScoreStore)
+        mock_client = self._make_mock_redis()
+        mock_client.zrangebyscore.return_value = [
+            "1000.0:0.95",
+            "1001.0:0.10",
+        ]
+        store._client = mock_client
+        store._scores_key = "tobira:scores:current"
+        store._baseline_key = "tobira:scores:baseline"
+        store._window_seconds = 86400
+
+        scores = store.get_scores(start=999.0, end=1002.0)
+
+        assert scores == [0.95, 0.10]
+
+    @patch("tobira.monitoring.store.RedisScoreStore.__init__", return_value=None)
+    def test_save_and_get_baseline(self, mock_init: MagicMock) -> None:
+        from tobira.monitoring.store import RedisScoreStore
+
+        store = RedisScoreStore.__new__(RedisScoreStore)
+        mock_client = self._make_mock_redis()
+        mock_pipeline = MagicMock()
+        mock_client.pipeline.return_value = mock_pipeline
+        store._client = mock_client
+        store._scores_key = "tobira:scores:current"
+        store._baseline_key = "tobira:scores:baseline"
+        store._window_seconds = 86400
+
+        store.save_baseline([0.1, 0.5, 0.9])
+
+        mock_pipeline.delete.assert_called_once_with("tobira:scores:baseline")
+        mock_pipeline.zadd.assert_called_once()
+        mock_pipeline.execute.assert_called_once()
+
+    @patch("tobira.monitoring.store.RedisScoreStore.__init__", return_value=None)
+    def test_clear(self, mock_init: MagicMock) -> None:
+        from tobira.monitoring.store import RedisScoreStore
+
+        store = RedisScoreStore.__new__(RedisScoreStore)
+        mock_client = self._make_mock_redis()
+        store._client = mock_client
+        store._scores_key = "tobira:scores:current"
+        store._baseline_key = "tobira:scores:baseline"
+        store._window_seconds = 86400
+
+        store.clear()
+
+        mock_client.delete.assert_called_once_with(
+            "tobira:scores:current", "tobira:scores:baseline",
+        )
+
+
+# ── collector Redis integration tests ─────────────────────────
+
+
+@requires_fastapi
+class TestPredictionCollectorRedis:
+    def test_redis_store_initialized_when_url_provided(
+        self, tmp_path: Path,
+    ) -> None:
+        with patch(
+            "tobira.monitoring.store.RedisScoreStore",
+        ) as MockStore:
+            from tobira.monitoring.collector import PredictionCollector
+
+            app = MagicMock()
+            collector = PredictionCollector(
+                app, log_path=str(tmp_path / "log.jsonl"),
+                redis_url="redis://localhost:6379/0",
+            )
+            MockStore.assert_called_once()
+            assert collector._redis_store is not None
+
+    def test_no_redis_store_without_url(self, tmp_path: Path) -> None:
+        from tobira.monitoring.collector import PredictionCollector
+
+        app = MagicMock()
+        collector = PredictionCollector(
+            app, log_path=str(tmp_path / "log.jsonl"),
+        )
+        assert collector._redis_store is None
+
+
+# ── monitor command tests ───────────────────────────────────
 
 
 class TestMonitorCommand:

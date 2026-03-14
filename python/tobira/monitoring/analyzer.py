@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from tobira.monitoring.drift import DriftResult, _classify_psi
+
 _MIN_SAMPLES = 30
-_PSI_WARNING = 0.1
-_PSI_ALERT = 0.25
 _NUM_BINS = 10
 
 
@@ -117,6 +116,9 @@ def compute_psi(
 ) -> PSIResult:
     """Compute the Population Stability Index between two score distributions.
 
+    Delegates to :func:`tobira.monitoring.drift.compute_psi` for the
+    algorithm and wraps the result in a :class:`PSIResult`.
+
     Args:
         reference: Baseline score distribution.
         current: Current score distribution.
@@ -125,38 +127,10 @@ def compute_psi(
     Returns:
         A PSIResult with the PSI value and severity level.
     """
-    lo = min(min(reference), min(current))
-    hi = max(max(reference), max(current))
-    if lo == hi:
-        return PSIResult(psi=0.0, level="ok")
+    from tobira.monitoring.drift import compute_psi as _compute_psi
 
-    bin_width = (hi - lo) / num_bins
-    eps = 1e-6
-
-    def _bin_proportions(values: list[float]) -> list[float]:
-        counts = [0] * num_bins
-        for v in values:
-            idx = min(int((v - lo) / bin_width), num_bins - 1)
-            counts[idx] += 1
-        total = len(values)
-        return [(c / total) + eps for c in counts]
-
-    ref_props = _bin_proportions(reference)
-    cur_props = _bin_proportions(current)
-
-    psi = sum(
-        (cur_props[i] - ref_props[i]) * math.log(cur_props[i] / ref_props[i])
-        for i in range(num_bins)
-    )
-
-    if psi >= _PSI_ALERT:
-        level = "alert"
-    elif psi >= _PSI_WARNING:
-        level = "warning"
-    else:
-        level = "ok"
-
-    return PSIResult(psi=round(psi, 6), level=level)
+    psi = _compute_psi(reference, current, bins=num_bins)
+    return PSIResult(psi=psi, level=_classify_psi(psi))
 
 
 def compute_ks(
@@ -165,7 +139,8 @@ def compute_ks(
 ) -> KSResult:
     """Compute the Kolmogorov-Smirnov statistic between two distributions.
 
-    Uses the asymptotic critical value at alpha=0.05.
+    Delegates to :func:`tobira.monitoring.drift.compute_ks_test` for the
+    algorithm and wraps the result in a :class:`KSResult`.
 
     Args:
         reference: Baseline score distribution.
@@ -174,27 +149,10 @@ def compute_ks(
     Returns:
         A KSResult with the statistic and significance flag.
     """
-    n1 = len(reference)
-    n2 = len(current)
-    combined = sorted(set(reference + current))
+    from tobira.monitoring.drift import compute_ks_test as _compute_ks_test
 
-    def _cdf(values: list[float], point: float) -> float:
-        return sum(1 for v in values if v <= point) / len(values)
-
-    max_diff = 0.0
-    for x in combined:
-        diff = abs(_cdf(reference, x) - _cdf(current, x))
-        if diff > max_diff:
-            max_diff = diff
-
-    # Asymptotic critical value at alpha=0.05
-    c_alpha = 1.36
-    critical = c_alpha * math.sqrt((n1 + n2) / (n1 * n2))
-
-    return KSResult(
-        statistic=round(max_diff, 6),
-        significant=max_diff > critical,
-    )
+    stat, pvalue = _compute_ks_test(reference, current)
+    return KSResult(statistic=stat, significant=pvalue < 0.05)
 
 
 def _filter_by_period(
@@ -402,3 +360,43 @@ def analyze(
         backend_suggestion=backend_suggestion,
         warnings=warnings,
     )
+
+
+def analyze_drift_from_redis(
+    redis_url: str,
+    *,
+    key_prefix: str = "tobira:scores",
+    window_seconds: int = 86400,
+    psi_threshold: float = 0.2,
+) -> DriftResult | None:
+    """Run drift detection using scores stored in Redis.
+
+    Compares the stored baseline distribution against scores accumulated in
+    the current window.  Returns ``None`` if there are insufficient samples
+    (fewer than ``_MIN_SAMPLES`` in either distribution).
+
+    Args:
+        redis_url: Redis connection URL.
+        key_prefix: Key prefix for :class:`~tobira.monitoring.store.RedisScoreStore`.
+        window_seconds: Time window (seconds) for current scores.
+        psi_threshold: PSI value above which drift is flagged.
+
+    Returns:
+        A :class:`~tobira.monitoring.drift.DriftResult`, or ``None`` when
+        data is insufficient.
+    """
+    from tobira.monitoring.drift import detect_drift
+    from tobira.monitoring.store import RedisScoreStore
+
+    store = RedisScoreStore(
+        redis_url=redis_url,
+        key_prefix=key_prefix,
+        window_seconds=window_seconds,
+    )
+    baseline = store.get_baseline()
+    current = store.get_scores()
+
+    if len(baseline) < _MIN_SAMPLES or len(current) < _MIN_SAMPLES:
+        return None
+
+    return detect_drift(baseline, current, psi_threshold=psi_threshold)

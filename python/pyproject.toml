@@ -36,6 +36,9 @@ onnx = [
 llm = [
     "httpx>=0.24",
 ]
+redis = [
+    "redis>=4.0",
+]
 
 [project.scripts]
 tobira = "tobira.cli:main"
@@ -78,6 +81,7 @@ module = [
     "spacy",
     "spacy.*",
     "ginza",
+    "redis",
 ]
 ignore_missing_imports = true
 
