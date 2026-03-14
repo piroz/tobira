@@ -11,11 +11,20 @@ import pytest
 from tobira.evaluation.metrics import (
     ConfusionMatrix,
     MetricsResult,
+    MulticlassMetricsResult,
+    PerClassMetrics,
     compute_metrics,
+    compute_multiclass_metrics,
     confusion_matrix,
+    multiclass_confusion_matrix,
 )
 from tobira.evaluation.plot import pr_curve_data
-from tobira.evaluation.report import to_json, to_text
+from tobira.evaluation.report import (
+    multiclass_to_json,
+    multiclass_to_text,
+    to_json,
+    to_text,
+)
 from tobira.evaluation.threshold import (
     ThresholdResult,
     find_best_threshold_f1,
@@ -320,16 +329,159 @@ class TestPlotImportError:
             _import_matplotlib()
 
 
+class TestMulticlassConfusionMatrix:
+    def test_perfect_predictions(self) -> None:
+        y_true = ["ham", "spam", "phishing"]
+        y_pred = ["ham", "spam", "phishing"]
+        # labels inferred as sorted: ham, phishing, spam
+        cm = multiclass_confusion_matrix(y_true, y_pred)
+        assert cm == ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+
+    def test_with_explicit_labels(self) -> None:
+        y_true = ["ham", "spam", "spam"]
+        y_pred = ["ham", "ham", "spam"]
+        labels = ["ham", "spam"]
+        cm = multiclass_confusion_matrix(y_true, y_pred, labels)
+        assert cm == ((1, 0), (1, 1))
+
+    def test_all_wrong(self) -> None:
+        y_true = ["ham", "ham", "spam", "spam"]
+        y_pred = ["spam", "spam", "ham", "ham"]
+        labels = ["ham", "spam"]
+        cm = multiclass_confusion_matrix(y_true, y_pred, labels)
+        assert cm == ((0, 2), (2, 0))
+
+    def test_length_mismatch(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            multiclass_confusion_matrix(["ham"], ["ham", "spam"])
+
+    def test_empty_inputs(self) -> None:
+        with pytest.raises(ValueError, match="not be empty"):
+            multiclass_confusion_matrix([], [])
+
+
+class TestComputeMulticlassMetrics:
+    def test_perfect_scores(self) -> None:
+        y_true = ["ham", "spam", "phishing", "ham"]
+        y_pred = ["ham", "spam", "phishing", "ham"]
+        m = compute_multiclass_metrics(y_true, y_pred)
+        assert m.accuracy == 1.0
+        assert m.macro_precision == pytest.approx(1.0)
+        assert m.macro_recall == pytest.approx(1.0)
+        assert m.macro_f1 == pytest.approx(1.0)
+
+    def test_per_class_metrics(self) -> None:
+        y_true = ["ham", "ham", "spam", "spam"]
+        y_pred = ["ham", "spam", "spam", "spam"]
+        labels = ["ham", "spam"]
+        m = compute_multiclass_metrics(y_true, y_pred, labels)
+        assert len(m.per_class) == 2
+        ham_pc = m.per_class[0]
+        assert ham_pc.label == "ham"
+        assert ham_pc.precision == pytest.approx(1.0)
+        assert ham_pc.recall == pytest.approx(0.5)
+        assert ham_pc.support == 2
+        spam_pc = m.per_class[1]
+        assert spam_pc.label == "spam"
+        assert spam_pc.recall == pytest.approx(1.0)
+
+    def test_frozen(self) -> None:
+        m = compute_multiclass_metrics(["ham", "spam"], ["ham", "spam"])
+        with pytest.raises(AttributeError):
+            m.accuracy = 0.5  # type: ignore[misc]
+
+    def test_per_class_metrics_frozen(self) -> None:
+        pc = PerClassMetrics(
+            label="ham", precision=1.0, recall=1.0, f1=1.0, support=1
+        )
+        with pytest.raises(AttributeError):
+            pc.label = "spam"  # type: ignore[misc]
+
+    def test_length_mismatch(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            compute_multiclass_metrics(["ham"], ["ham", "spam"])
+
+    def test_empty_inputs(self) -> None:
+        with pytest.raises(ValueError, match="not be empty"):
+            compute_multiclass_metrics([], [])
+
+    def test_labels_inferred_sorted(self) -> None:
+        y_true = ["spam", "ham", "phishing"]
+        y_pred = ["spam", "ham", "phishing"]
+        m = compute_multiclass_metrics(y_true, y_pred)
+        assert m.labels == ("ham", "phishing", "spam")
+
+    def test_confusion_matrix_included(self) -> None:
+        y_true = ["ham", "spam"]
+        y_pred = ["ham", "spam"]
+        m = compute_multiclass_metrics(y_true, y_pred)
+        assert len(m.confusion_matrix) == 2
+        assert m.confusion_matrix == ((1, 0), (0, 1))
+
+
+class TestMulticlassReport:
+    def _make_result(self) -> MulticlassMetricsResult:
+        return compute_multiclass_metrics(
+            ["ham", "ham", "spam", "spam", "phishing"],
+            ["ham", "spam", "spam", "spam", "phishing"],
+        )
+
+    def test_text_contains_header(self) -> None:
+        text = multiclass_to_text(self._make_result())
+        assert "=== Multiclass Evaluation Report ===" in text
+
+    def test_text_contains_macro_metrics(self) -> None:
+        text = multiclass_to_text(self._make_result())
+        assert "Macro Precision:" in text
+        assert "Macro Recall:" in text
+        assert "Macro F1:" in text
+
+    def test_text_contains_per_class(self) -> None:
+        text = multiclass_to_text(self._make_result())
+        assert "ham" in text
+        assert "spam" in text
+        assert "phishing" in text
+        assert "Per-Class Metrics:" in text
+
+    def test_text_contains_confusion_matrix(self) -> None:
+        text = multiclass_to_text(self._make_result())
+        assert "Confusion Matrix:" in text
+
+    def test_json_valid(self) -> None:
+        data = json.loads(multiclass_to_json(self._make_result()))
+        assert "accuracy" in data
+        assert "macro_precision" in data
+        assert "per_class" in data
+        assert isinstance(data["per_class"], list)
+        assert len(data["per_class"]) == 3
+        assert "confusion_matrix" in data
+        assert "labels" in data
+
+    def test_json_per_class_fields(self) -> None:
+        data = json.loads(multiclass_to_json(self._make_result()))
+        pc = data["per_class"][0]
+        expected_keys = {
+            "label", "precision", "recall", "f1", "support",
+        }
+        assert set(pc.keys()) == expected_keys
+
+
 class TestEvaluationPublicAPI:
     def test_imports_from_package(self) -> None:
         from tobira.evaluation import (
             ConfusionMatrix,
             MetricsResult,
+            MulticlassMetricsResult,
+            PerClassMetrics,
             ThresholdResult,
             compute_metrics,
+            compute_multiclass_metrics,
             confusion_matrix,
             find_best_threshold_f1,
             find_best_threshold_fpr,
+            multiclass_confusion_matrix,
+            multiclass_to_json,
+            multiclass_to_text,
             plot_pr_curve,
             pr_curve_data,
             to_json,
@@ -338,11 +490,17 @@ class TestEvaluationPublicAPI:
 
         assert ConfusionMatrix is not None
         assert MetricsResult is not None
+        assert MulticlassMetricsResult is not None
+        assert PerClassMetrics is not None
         assert ThresholdResult is not None
         assert compute_metrics is not None
+        assert compute_multiclass_metrics is not None
         assert confusion_matrix is not None
         assert find_best_threshold_f1 is not None
         assert find_best_threshold_fpr is not None
+        assert multiclass_confusion_matrix is not None
+        assert multiclass_to_json is not None
+        assert multiclass_to_text is not None
         assert plot_pr_curve is not None
         assert pr_curve_data is not None
         assert to_json is not None

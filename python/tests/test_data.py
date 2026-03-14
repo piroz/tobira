@@ -8,7 +8,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tobira.data.categories import (
+    MULTICLASS_CATEGORIES,
     SPAM_CATEGORIES,
+    SPAM_SUBCATEGORIES,
     Category,
     get_category,
 )
@@ -41,6 +43,43 @@ class TestSPAMCategories:
             assert cat.description
 
 
+class TestSpamSubcategories:
+    def test_has_8_subcategories(self) -> None:
+        assert len(SPAM_SUBCATEGORIES) == 8
+
+    def test_expected_names(self) -> None:
+        names = {c.name for c in SPAM_SUBCATEGORIES}
+        expected = {
+            "phishing", "malware", "financial_fraud", "lottery",
+            "romance_scam", "drug", "fake_service", "tech_support",
+        }
+        assert names == expected
+
+    def test_all_have_required_fields(self) -> None:
+        for cat in SPAM_SUBCATEGORIES:
+            assert cat.name
+            assert cat.label
+            assert cat.description
+
+
+class TestMulticlassCategories:
+    def test_includes_ham(self) -> None:
+        names = {c.name for c in MULTICLASS_CATEGORIES}
+        assert "ham" in names
+
+    def test_includes_all_subcategories(self) -> None:
+        mc_names = {c.name for c in MULTICLASS_CATEGORIES}
+        sub_names = {c.name for c in SPAM_SUBCATEGORIES}
+        assert sub_names.issubset(mc_names)
+
+    def test_does_not_include_generic_spam(self) -> None:
+        names = {c.name for c in MULTICLASS_CATEGORIES}
+        assert "spam" not in names
+
+    def test_count(self) -> None:
+        assert len(MULTICLASS_CATEGORIES) == 9  # ham + 8 subcategories
+
+
 class TestGetCategory:
     def test_get_spam(self) -> None:
         cat = get_category("spam")
@@ -49,6 +88,16 @@ class TestGetCategory:
     def test_get_ham(self) -> None:
         cat = get_category("ham")
         assert cat.name == "ham"
+
+    def test_get_subcategory(self) -> None:
+        cat = get_category("phishing")
+        assert cat.name == "phishing"
+        assert cat.label == "Phishing"
+
+    def test_get_all_subcategories(self) -> None:
+        for sub in SPAM_SUBCATEGORIES:
+            cat = get_category(sub.name)
+            assert cat.name == sub.name
 
     def test_unknown_raises_key_error(self) -> None:
         with pytest.raises(KeyError, match="Unknown category"):
@@ -109,6 +158,24 @@ class TestGenerate:
         body = call_args[1]["json"]
         assert body["model"] == "test-model"
 
+    def test_generates_subcategory_samples(self) -> None:
+        mock_client = MagicMock()
+        mock_client.post.return_value = self._mock_response(
+            ["phishing message"]
+        )
+
+        samples = generate(
+            "phishing", 1, api_key="test-key", client=mock_client
+        )
+        assert len(samples) == 1
+        assert samples[0].category == "phishing"
+
+        # Verify prompt includes subcategory label/description
+        call_args = mock_client.post.call_args
+        body = call_args[1]["json"]
+        prompt = body["messages"][1]["content"]
+        assert "Phishing" in prompt
+
     def test_unknown_category_raises(self) -> None:
         mock_client = MagicMock()
         with pytest.raises(KeyError, match="Unknown category"):
@@ -149,14 +216,18 @@ class TestGenerate:
 class TestDataPublicAPI:
     def test_imports_from_package(self) -> None:
         from tobira.data import (
+            MULTICLASS_CATEGORIES,
             SPAM_CATEGORIES,
+            SPAM_SUBCATEGORIES,
             Category,
             SyntheticSample,
             generate,
             get_category,
         )
 
+        assert MULTICLASS_CATEGORIES is not None
         assert SPAM_CATEGORIES is not None
+        assert SPAM_SUBCATEGORIES is not None
         assert Category is not None
         assert SyntheticSample is not None
         assert generate is not None

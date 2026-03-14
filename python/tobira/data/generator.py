@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from tobira.data.categories import SPAM_CATEGORIES, Category
+from tobira.data.categories import Category, get_category
 
 
 def _import_httpx() -> Any:
@@ -56,7 +56,7 @@ def generate(
     """Generate synthetic samples for a *category* using an LLM API.
 
     Args:
-        category: Category name (must exist in :data:`SPAM_CATEGORIES`).
+        category: Category name (must exist in the category catalogue).
         count: Number of samples to generate.
         model: LLM model name.
         base_url: API base URL.
@@ -73,14 +73,8 @@ def generate(
     if count <= 0:
         raise ValueError("count must be positive")
 
-    # Look up category
-    cat: Category | None = None
-    for c in SPAM_CATEGORIES:
-        if c.name == category:
-            cat = c
-            break
-    if cat is None:
-        raise KeyError(f"Unknown category: {category!r}")
+    # Look up category (searches binary + multiclass catalogues)
+    cat = get_category(category)
 
     prompt = _build_prompt(cat, count)
 

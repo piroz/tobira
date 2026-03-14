@@ -16,6 +16,14 @@ class TwoStageBackend:
     then routes grey-zone predictions to a precise second-stage backend
     (e.g. BERT/ONNX) for refined classification.
 
+    For binary classification, the grey zone is defined by score thresholds:
+    predictions with confidence between *low* and *high* go to the second stage.
+
+    For multiclass classification (more than 2 labels in the result), the grey
+    zone is determined by the confidence of the top prediction: if the highest
+    score is below *high*, the prediction is considered uncertain and routed to
+    the second stage.
+
     Args:
         first_stage: Fast backend for coarse classification.
         second_stage: Precise backend for grey-zone re-classification.
@@ -41,14 +49,25 @@ class TwoStageBackend:
         self._total = 0
         self._first_stage_decided = 0
 
+    def _is_confident(self, result: PredictionResult) -> bool:
+        """Check whether the first-stage result is confident enough.
+
+        For binary results (2 labels), uses the original low/high threshold
+        logic on the top score.  For multiclass results (>2 labels), the
+        prediction is confident when the top score is >= *high*.
+        """
+        low, high = self._grey_zone
+        is_binary = len(result.labels) <= 2
+        if is_binary:
+            return result.score >= high or result.score <= low
+        return result.score >= high
+
     def predict(self, text: str) -> PredictionResult:
         """Run two-stage inference on the given text."""
-        low, high = self._grey_zone
-
         first_result = self._first_stage.predict(text)
         self._total += 1
 
-        if first_result.score >= high or first_result.score <= low:
+        if self._is_confident(first_result):
             self._first_stage_decided += 1
             self._log_stats()
             return first_result

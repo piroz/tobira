@@ -914,6 +914,107 @@ class TestTwoStageBackend:
         assert "first_stage_decided=1" in caplog.text
         assert "total=2" in caplog.text
 
+    def test_multiclass_high_confidence_first_stage(self) -> None:
+        """Multiclass: high top score -> first stage decides."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        multiclass_labels = {
+            "ham": 0.02, "phishing": 0.85, "malware": 0.03,
+            "financial_fraud": 0.02, "lottery": 0.02,
+            "romance_scam": 0.02, "drug": 0.02,
+            "fake_service": 0.01, "tech_support": 0.01,
+        }
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="phishing", score=0.85, labels=multiclass_labels
+        )
+        second = MagicMock()
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("click this link")
+
+        assert result.label == "phishing"
+        assert result.score == 0.85
+        second.predict.assert_not_called()
+
+    def test_multiclass_low_confidence_second_stage(self) -> None:
+        """Multiclass: low top score -> second stage called."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        first_labels = {
+            "ham": 0.20, "phishing": 0.30, "malware": 0.15,
+            "financial_fraud": 0.10, "lottery": 0.05,
+            "romance_scam": 0.05, "drug": 0.05,
+            "fake_service": 0.05, "tech_support": 0.05,
+        }
+        second_labels = {
+            "ham": 0.05, "phishing": 0.80, "malware": 0.05,
+            "financial_fraud": 0.02, "lottery": 0.02,
+            "romance_scam": 0.02, "drug": 0.02,
+            "fake_service": 0.01, "tech_support": 0.01,
+        }
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="phishing", score=0.30, labels=first_labels
+        )
+        second = MagicMock()
+        second.predict.return_value = PredictionResult(
+            label="phishing", score=0.80, labels=second_labels
+        )
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("suspicious message")
+
+        assert result.label == "phishing"
+        assert result.score == 0.80
+        second.predict.assert_called_once_with("suspicious message")
+
+    def test_multiclass_at_threshold_first_stage(self) -> None:
+        """Multiclass: score exactly at high threshold -> first stage."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        labels = {
+            "ham": 0.10, "phishing": 0.70, "malware": 0.10,
+            "financial_fraud": 0.10,
+        }
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="phishing", score=0.70, labels=labels
+        )
+        second = MagicMock()
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("test")
+
+        assert result.label == "phishing"
+        second.predict.assert_not_called()
+
+    def test_multiclass_just_below_threshold(self) -> None:
+        """Multiclass: score just below high -> second stage."""
+        from tobira.backends.two_stage import TwoStageBackend
+
+        labels = {
+            "ham": 0.11, "phishing": 0.69, "malware": 0.10,
+            "financial_fraud": 0.10,
+        }
+        first = MagicMock()
+        first.predict.return_value = PredictionResult(
+            label="phishing", score=0.69, labels=labels
+        )
+        second = MagicMock()
+        second.predict.return_value = PredictionResult(
+            label="phishing", score=0.90, labels={
+                "ham": 0.02, "phishing": 0.90,
+                "malware": 0.04, "financial_fraud": 0.04,
+            }
+        )
+
+        backend = TwoStageBackend(first_stage=first, second_stage=second)
+        result = backend.predict("test")
+
+        assert result.score == 0.90
+        second.predict.assert_called_once()
+
 
 class TestTwoStageFactory:
     @patch("tobira.backends.fasttext._import_fasttext")

@@ -26,6 +26,21 @@ class PredictResponse(BaseModel):
         json_schema_extra={
             "examples": [
                 {"label": "spam", "score": 0.95, "labels": {"spam": 0.95, "ham": 0.05}},
+                {
+                    "label": "phishing",
+                    "score": 0.82,
+                    "labels": {
+                        "ham": 0.05,
+                        "phishing": 0.82,
+                        "malware": 0.03,
+                        "financial_fraud": 0.04,
+                        "lottery": 0.01,
+                        "romance_scam": 0.01,
+                        "drug": 0.02,
+                        "fake_service": 0.01,
+                        "tech_support": 0.01,
+                    },
+                },
             ],
         },
     )
