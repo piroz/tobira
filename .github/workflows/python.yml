@@ -35,6 +35,11 @@ jobs:
   test:
     needs: [lint, typecheck]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+        numpy-version: ["numpy<2", "numpy>=2"]
     defaults:
       run:
         working-directory: python
@@ -43,4 +48,9 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv run --python 3.12 pytest
+      - name: Install with NumPy constraint
+        run: uv sync --python ${{ matrix.python-version }} --all-extras
+      - name: Override NumPy version
+        run: uv pip install '${{ matrix.numpy-version }}'
+      - name: Run tests
+        run: uv run pytest

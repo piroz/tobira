@@ -260,6 +260,80 @@ class TestFactory:
         )
 
 
+class TestNumpyCopyPatch:
+    """Test _patch_numpy_copy workaround for NumPy 2.x + fasttext."""
+
+    def test_patch_fallback_on_copy_false_valueerror(self) -> None:
+        """When np.array(copy=False) raises ValueError, fall back to asarray."""
+        import numpy as np
+
+        import tobira.backends.fasttext as ft_mod
+
+        # Reset guard so patch is applied fresh
+        ft_mod._numpy_patched = False
+        original = np.array
+        ft_mod._patch_numpy_copy()
+
+        # Simulate the exact failure: a list requires a copy to become an
+        # ndarray, so copy=False should raise on NumPy 2.x.  The patch
+        # catches this and falls back to np.asarray.
+        result = np.array([1.0, 2.0, 3.0], copy=False)
+        assert list(result) == [1.0, 2.0, 3.0]
+
+        # Restore
+        np.array = original
+        ft_mod._numpy_patched = False
+
+    def test_patch_preserves_normal_array(self) -> None:
+        """Regular np.array calls should still work after patching."""
+        import numpy as np
+
+        import tobira.backends.fasttext as ft_mod
+
+        ft_mod._numpy_patched = False
+        original = np.array
+        ft_mod._patch_numpy_copy()
+
+        result = np.array([4, 5, 6])
+        assert list(result) == [4, 5, 6]
+
+        np.array = original
+        ft_mod._numpy_patched = False
+
+    def test_patch_is_idempotent(self) -> None:
+        """Calling _patch_numpy_copy twice should not double-wrap."""
+        import numpy as np
+
+        import tobira.backends.fasttext as ft_mod
+
+        ft_mod._numpy_patched = False
+        original = np.array
+        ft_mod._patch_numpy_copy()
+        first_patched = np.array
+        ft_mod._patch_numpy_copy()  # second call should be a no-op
+
+        assert np.array is first_patched
+
+        np.array = original
+        ft_mod._numpy_patched = False
+
+    def test_patch_reraises_non_copy_valueerror(self) -> None:
+        """ValueError not caused by copy=False should still propagate."""
+        import numpy as np
+
+        import tobira.backends.fasttext as ft_mod
+
+        ft_mod._numpy_patched = False
+        original = np.array
+        ft_mod._patch_numpy_copy()
+
+        with pytest.raises((ValueError, TypeError)):
+            np.array("not_a_valid_dtype", dtype="INVALID")
+
+        np.array = original
+        ft_mod._numpy_patched = False
+
+
 class TestFastTextImportError:
     @patch.dict("sys.modules", {"fasttext": None})
     def test_missing_fasttext_raises(self) -> None:
