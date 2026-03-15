@@ -867,6 +867,194 @@ class TestMonitorCommand:
         exit_code = main(["monitor", str(log_file), "--period", "30"])
         assert exit_code == 0
 
+
+# ── watch mode tests ────────────────────────────────────────────
+
+
+class TestMonitorWatch:
+    def _write_log(self, path: Path, n: int = 40) -> None:
+        records = _make_records(n, label=1)
+        with open(path, "w") as f:
+            for r in records:
+                f.write(json.dumps(r) + "\n")
+
+    def test_watch_runs_and_stops_on_signal(self, tmp_path: Path) -> None:
+        """--watch exits cleanly when shutdown flag is set."""
+        import tobira.cli.monitor_cmd as mod
+
+        log_file = tmp_path / "test.jsonl"
+        self._write_log(log_file)
+
+        call_count = 0
+
+        def fake_sleep(seconds: int) -> None:
+            nonlocal call_count
+            call_count += 1
+            mod._shutdown_requested = True
+
+        with patch.object(mod, "_sleep_interruptible", side_effect=fake_sleep):
+            from tobira.cli import main
+
+            exit_code = main(["monitor", str(log_file), "--watch", "--interval", "1"])
+
+        assert exit_code == 0
+        assert call_count >= 1
+
+    def test_watch_json_format(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--watch with --format json produces JSON output."""
+        import tobira.cli.monitor_cmd as mod
+
+        log_file = tmp_path / "test.jsonl"
+        self._write_log(log_file)
+
+        def fake_sleep(seconds: int) -> None:
+            mod._shutdown_requested = True
+
+        with patch.object(mod, "_sleep_interruptible", side_effect=fake_sleep):
+            from tobira.cli import main
+
+            exit_code = main(["monitor", str(log_file), "--watch", "--format", "json"])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+        assert "total_records" in parsed
+
+    def test_watch_missing_file_retries(self, tmp_path: Path) -> None:
+        """--watch logs a warning and retries when the log file is missing."""
+        import tobira.cli.monitor_cmd as mod
+
+        call_count = 0
+
+        def fake_sleep(seconds: int) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                mod._shutdown_requested = True
+
+        with patch.object(mod, "_sleep_interruptible", side_effect=fake_sleep):
+            from tobira.cli import main
+
+            exit_code = main([
+                "monitor", str(tmp_path / "nonexistent.jsonl"),
+                "--watch", "--interval", "1",
+            ])
+
+        assert exit_code == 0
+        assert call_count >= 2
+
+    def test_watch_pid_file_created_and_cleaned(self, tmp_path: Path) -> None:
+        """--pid-file is created on start and removed on stop."""
+        import tobira.cli.monitor_cmd as mod
+
+        log_file = tmp_path / "test.jsonl"
+        self._write_log(log_file)
+        pid_file = tmp_path / "monitor.pid"
+
+        def fake_sleep(seconds: int) -> None:
+            assert pid_file.exists()
+            mod._shutdown_requested = True
+
+        with patch.object(mod, "_sleep_interruptible", side_effect=fake_sleep):
+            from tobira.cli import main
+
+            exit_code = main([
+                "monitor", str(log_file), "--watch",
+                "--pid-file", str(pid_file),
+            ])
+
+        assert exit_code == 0
+        assert not pid_file.exists()
+
+    def test_watch_pid_file_blocks_duplicate(self, tmp_path: Path) -> None:
+        """--pid-file prevents a second instance when the first is running."""
+        import os
+
+        log_file = tmp_path / "test.jsonl"
+        self._write_log(log_file)
+        pid_file = tmp_path / "monitor.pid"
+        pid_file.write_text(str(os.getpid()))
+
+        from tobira.cli import main
+
+        exit_code = main([
+            "monitor", str(log_file), "--watch",
+            "--pid-file", str(pid_file),
+        ])
+        assert exit_code == 1
+
+    def test_watch_pid_file_stale_process(self, tmp_path: Path) -> None:
+        """--pid-file is reclaimed when the recorded PID is stale."""
+        import tobira.cli.monitor_cmd as mod
+
+        log_file = tmp_path / "test.jsonl"
+        self._write_log(log_file)
+        pid_file = tmp_path / "monitor.pid"
+        pid_file.write_text("999999999")
+
+        def fake_sleep(seconds: int) -> None:
+            mod._shutdown_requested = True
+
+        with patch.object(mod, "_sleep_interruptible", side_effect=fake_sleep):
+            from tobira.cli import main
+
+            exit_code = main([
+                "monitor", str(log_file), "--watch",
+                "--pid-file", str(pid_file),
+            ])
+
+        assert exit_code == 0
+
+    def test_watch_daemon_log(self, tmp_path: Path) -> None:
+        """--log writes daemon output to the specified file."""
+        import tobira.cli.monitor_cmd as mod
+
+        log_file = tmp_path / "test.jsonl"
+        self._write_log(log_file)
+        daemon_log = tmp_path / "daemon.log"
+
+        def fake_sleep(seconds: int) -> None:
+            mod._shutdown_requested = True
+
+        with patch.object(mod, "_sleep_interruptible", side_effect=fake_sleep):
+            from tobira.cli import main
+
+            exit_code = main([
+                "monitor", str(log_file), "--watch",
+                "--log", str(daemon_log),
+            ])
+
+        assert exit_code == 0
+        assert daemon_log.exists()
+        content = daemon_log.read_text()
+        assert "Analysis complete" in content
+
+    def test_watch_reports_warnings(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--watch prints warnings from the analysis report."""
+        import tobira.cli.monitor_cmd as mod
+
+        log_file = tmp_path / "test.jsonl"
+        records = _make_records(5, label=1)
+        with open(log_file, "w") as f:
+            for r in records:
+                f.write(json.dumps(r) + "\n")
+
+        def fake_sleep(seconds: int) -> None:
+            mod._shutdown_requested = True
+
+        with patch.object(mod, "_sleep_interruptible", side_effect=fake_sleep):
+            from tobira.cli import main
+
+            exit_code = main(["monitor", str(log_file), "--watch"])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Insufficient samples" in captured.out
+
     def test_phase_option(self, tmp_path: Path) -> None:
         from tobira.cli import main
 

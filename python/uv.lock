@@ -41,6 +41,15 @@ wheels = [
 ]
 
 [[package]]
+name = "async-timeout"
+version = "5.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/ae/136395dfbfe00dfc94da3f3e136d0b13f394cba8f4841120e34226265780/async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3", size = 9274, upload-time = "2024-11-06T16:41:39.6Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/ba/e2081de779ca30d473f21f5b30e0e737c438205440784c7dfc81efc2b029/async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c", size = 6233, upload-time = "2024-11-06T16:41:37.9Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.2.25"
 source = { registry = "https://pypi.org/simple" }
@@ -3000,6 +3009,38 @@ wheels = [
 ]
 
 [[package]]
+name = "redis"
+version = "7.0.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.10'",
+]
+dependencies = [
+    { name = "async-timeout", marker = "python_full_version < '3.10'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/8f/f125feec0b958e8d22c8f0b492b30b1991d9499a4315dfde466cf4289edc/redis-7.0.1.tar.gz", hash = "sha256:c949df947dca995dc68fdf5a7863950bf6df24f8d6022394585acc98e81624f1", size = 4755322, upload-time = "2025-10-27T14:34:00.33Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/97/9f22a33c475cda519f20aba6babb340fb2f2254a02fb947816960d1e669a/redis-7.0.1-py3-none-any.whl", hash = "sha256:4977af3c7d67f8f0eb8b6fec0dafc9605db9343142f634041fb0235f67c0588a", size = 339938, upload-time = "2025-10-27T14:33:58.553Z" },
+]
+
+[[package]]
+name = "redis"
+version = "7.3.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12'",
+    "python_full_version == '3.11.*'",
+    "python_full_version == '3.10.*'",
+]
+dependencies = [
+    { name = "async-timeout", marker = "python_full_version >= '3.10' and python_full_version < '3.11.3'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/da/82/4d1a5279f6c1251d3d2a603a798a1137c657de9b12cfc1fba4858232c4d2/redis-7.3.0.tar.gz", hash = "sha256:4d1b768aafcf41b01022410b3cc4f15a07d9b3d6fe0c66fc967da2c88e551034", size = 4928081, upload-time = "2026-03-06T18:18:16.287Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/28/84e57fce7819e81ec5aa1bd31c42b89607241f4fb1a3ea5b0d2dbeaea26c/redis-7.3.0-py3-none-any.whl", hash = "sha256:9d4fcb002a12a5e3c3fbe005d59c48a2cc231f87fbb2f6b70c2d89bb64fec364", size = 404379, upload-time = "2026-03-06T18:18:14.583Z" },
+]
+
+[[package]]
 name = "regex"
 version = "2026.1.15"
 source = { registry = "https://pypi.org/simple" }
@@ -3399,7 +3440,7 @@ wheels = [
 
 [[package]]
 name = "tobira"
-version = "0.0.1"
+version = "0.1.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -3416,6 +3457,10 @@ evaluation = [
 fasttext = [
     { name = "fasttext-wheel" },
 ]
+hub = [
+    { name = "huggingface-hub", version = "0.36.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "huggingface-hub", version = "1.7.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+]
 llm = [
     { name = "httpx" },
 ]
@@ -3428,6 +3473,10 @@ onnx = [
     { name = "optimum" },
     { name = "transformers", version = "4.57.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "transformers", version = "5.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+]
+redis = [
+    { name = "redis", version = "7.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "redis", version = "7.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
 serving = [
     { name = "fastapi", version = "0.128.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -3445,7 +3494,7 @@ dev = [
     { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "pytest", version = "9.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "pytest-cov" },
-    { name = "tobira", extra = ["bert", "evaluation", "fasttext", "llm", "multilingual", "onnx", "serving"] },
+    { name = "tobira", extra = ["bert", "evaluation", "fasttext", "hub", "llm", "multilingual", "onnx", "redis", "serving"] },
 ]
 
 [package.metadata]
@@ -3453,18 +3502,20 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'serving'", specifier = ">=0.100" },
     { name = "fasttext-wheel", marker = "extra == 'fasttext'", specifier = ">=0.9.2" },
     { name = "httpx", marker = "extra == 'llm'", specifier = ">=0.24" },
+    { name = "huggingface-hub", marker = "extra == 'hub'", specifier = ">=0.20" },
     { name = "langdetect", marker = "extra == 'multilingual'", specifier = ">=1.0.9" },
     { name = "matplotlib", marker = "extra == 'evaluation'", specifier = ">=3.5" },
     { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.16" },
     { name = "optimum", marker = "extra == 'onnx'", specifier = ">=1.13" },
     { name = "pydantic", marker = "extra == 'serving'", specifier = ">=2.0" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=4.0" },
     { name = "tomli", marker = "python_full_version < '3.11' and extra == 'serving'", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'bert'", specifier = ">=2.0" },
     { name = "transformers", marker = "extra == 'bert'", specifier = ">=4.30" },
     { name = "transformers", marker = "extra == 'onnx'", specifier = ">=4.30" },
     { name = "uvicorn", marker = "extra == 'serving'", specifier = ">=0.20" },
 ]
-provides-extras = ["fasttext", "bert", "serving", "evaluation", "onnx", "llm", "multilingual"]
+provides-extras = ["fasttext", "bert", "serving", "evaluation", "onnx", "llm", "redis", "multilingual", "hub"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3472,7 +3523,7 @@ dev = [
     { name = "mypy", specifier = ">=1.10" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=6.0" },
-    { name = "tobira", extras = ["fasttext", "bert", "serving", "evaluation", "onnx", "llm", "multilingual"] },
+    { name = "tobira", extras = ["fasttext", "bert", "serving", "evaluation", "onnx", "llm", "redis", "multilingual", "hub"] },
 ]
 
 [[package]]
