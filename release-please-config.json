@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": true,
+  "packages": {
+    "python": {
+      "release-type": "python",
+      "package-name": "tobira",
+      "component": "tobira-python",
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "pyproject.toml",
+          "jsonpath": "$.project.version"
+        }
+      ]
+    },
+    "js": {
+      "release-type": "node",
+      "package-name": "tobira",
+      "component": "tobira-js",
+      "include-component-in-tag": true
+    }
+  },
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance Improvements" },
+    { "type": "refactor", "section": "Code Refactoring" },
+    { "type": "test", "section": "Tests" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "ci", "section": "CI" },
+    { "type": "chore", "section": "Miscellaneous" }
+  ]
+}
