@@ -5,12 +5,17 @@ __all__ = [
     "PhaseAdvice",
     "PhaseTransitionConfig",
     "PredictionCollector",
+    "RetrainConfig",
+    "RetrainEvent",
     "analyze",
     "analyze_drift_from_redis",
     "append_record",
+    "check_retrain_needed",
     "detect_drift",
+    "load_retrain_config",
     "read_records",
     "RedisScoreStore",
+    "trigger_retrain",
 ]
 
 
@@ -43,4 +48,9 @@ def __getattr__(name: str):  # type: ignore[no-untyped-def]
         from tobira.monitoring.store import RedisScoreStore
 
         return RedisScoreStore
+    if name in ("RetrainConfig", "RetrainEvent", "check_retrain_needed",
+                "load_retrain_config", "trigger_retrain"):
+        from tobira.monitoring import retrain
+
+        return getattr(retrain, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
