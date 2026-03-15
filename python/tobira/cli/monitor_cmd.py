@@ -49,6 +49,19 @@ def _format_text(report: Any) -> str:
         )
     lines.append("")
 
+    if report.phase_advice is not None:
+        pa = report.phase_advice
+        lines.append("Phase transition advice:")
+        lines.append(
+            f"  Current phase: {pa.current_phase.value}"
+            f"  ({'ready' if pa.ready else 'not ready'})"
+        )
+        for cond in pa.conditions:
+            mark = "✅" if cond.met else "❌"
+            lines.append(f"  {mark} {cond.description}: {cond.detail}")
+        lines.append(f"  → {pa.recommendation}")
+        lines.append("")
+
     if report.warnings:
         lines.append("Warnings:")
         for w in report.warnings:
@@ -59,7 +72,9 @@ def _format_text(report: Any) -> str:
 
 def _format_json(report: Any) -> str:
     """Format an AnalysisReport as JSON."""
-    return json.dumps(asdict(report), indent=2, ensure_ascii=False)
+    return json.dumps(
+        asdict(report), indent=2, ensure_ascii=False, default=str,
+    )
 
 
 def register(subparsers: "argparse._SubParsersAction[Any]") -> None:
@@ -92,6 +107,12 @@ def register(subparsers: "argparse._SubParsersAction[Any]") -> None:
         metavar="DAYS",
         help="Analyse only the last N days of data",
     )
+    parser.add_argument(
+        "--phase",
+        choices=["A", "B", "C", "D"],
+        default=None,
+        help="Current deployment phase for transition advice",
+    )
     parser.set_defaults(func=_run)
 
 
@@ -104,7 +125,7 @@ def _run(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, 1 for failure).
     """
-    from tobira.monitoring.analyzer import analyze
+    from tobira.monitoring.analyzer import DeploymentPhase, analyze
     from tobira.monitoring.store import read_records
 
     try:
@@ -113,7 +134,10 @@ def _run(args: argparse.Namespace) -> int:
         print(f"Error: {exc}")
         return 1
 
-    report = analyze(records, period_days=args.period)
+    current_phase = DeploymentPhase(args.phase) if args.phase else None
+    report = analyze(
+        records, period_days=args.period, current_phase=current_phase,
+    )
 
     if args.output_format == "json":
         print(_format_json(report))

@@ -12,10 +12,15 @@ from tobira.backends.protocol import BackendProtocol, PredictionResult
 from tobira.monitoring.analyzer import (
     AnalysisReport,
     BackendSuggestion,
+    DeploymentPhase,
     KSResult,
+    PhaseAdvice,
+    PhaseTransitionCondition,
+    PhaseTransitionConfig,
     PSIResult,
     RatePoint,
     ThresholdSuggestion,
+    _advise_phase_transition,
     analyze,
     compute_ks,
     compute_psi,
@@ -251,6 +256,21 @@ class TestMonitoringLazyImport:
         with pytest.raises(AttributeError, match="has no attribute"):
             _ = tobira.monitoring.nonexistent_attr  # type: ignore[attr-defined]
 
+    def test_lazy_deployment_phase_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "DeploymentPhase")
+
+    def test_lazy_phase_advice_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "PhaseAdvice")
+
+    def test_lazy_phase_transition_config_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "PhaseTransitionConfig")
+
     def test_lazy_analyze_import(self) -> None:
         import tobira.monitoring
 
@@ -431,6 +451,155 @@ class TestAnalyzerDataclasses:
         bs = BackendSuggestion(suggestion="test", labeled_count=100)
         with pytest.raises(AttributeError):
             bs.labeled_count = 200  # type: ignore[misc]
+
+
+# ── phase advisor tests ─────────────────────────────────────────
+
+
+class TestPhaseAdvisorDataclasses:
+    def test_phase_advice_frozen(self) -> None:
+        advice = PhaseAdvice(
+            current_phase=DeploymentPhase.A,
+            conditions=(),
+            ready=False,
+            recommendation="test",
+        )
+        with pytest.raises(AttributeError):
+            advice.ready = True  # type: ignore[misc]
+
+    def test_phase_transition_condition_frozen(self) -> None:
+        cond = PhaseTransitionCondition(
+            description="test", met=True, detail="ok",
+        )
+        with pytest.raises(AttributeError):
+            cond.met = False  # type: ignore[misc]
+
+    def test_deployment_phase_values(self) -> None:
+        assert DeploymentPhase.A.value == "A"
+        assert DeploymentPhase.B.value == "B"
+        assert DeploymentPhase.C.value == "C"
+        assert DeploymentPhase.D.value == "D"
+
+
+class TestPhaseAdvisorPhaseA:
+    def test_not_ready_insufficient_labels(self) -> None:
+        records = _make_records(100, label=1)
+        config = PhaseTransitionConfig(min_labeled_for_training=500)
+        advice = _advise_phase_transition(records, DeploymentPhase.A, config)
+        assert not advice.ready
+        assert advice.current_phase == DeploymentPhase.A
+        assert len(advice.conditions) == 1
+        assert not advice.conditions[0].met
+
+    def test_ready_with_enough_labels(self) -> None:
+        records = _make_records(600, label=1)
+        config = PhaseTransitionConfig(min_labeled_for_training=500)
+        advice = _advise_phase_transition(records, DeploymentPhase.A, config)
+        assert advice.ready
+        assert advice.conditions[0].met
+        assert "Phase B" in advice.recommendation
+
+
+class TestPhaseAdvisorPhaseB:
+    def _make_good_records(self, n: int) -> list[dict[str, object]]:
+        """Create records with clear spam/ham separation for high F1."""
+        records: list[dict[str, object]] = []
+        for i in range(n):
+            is_spam = i < n // 2
+            records.append({
+                "timestamp": f"2025-01-01T{i % 24:02d}:00:00+00:00",
+                "score": 0.95 if is_spam else 0.05,
+                "label": 1 if is_spam else 0,
+            })
+        return records
+
+    def test_not_ready_insufficient_samples(self) -> None:
+        records = _make_records(30, label=1)
+        config = PhaseTransitionConfig(min_eval_samples=100)
+        advice = _advise_phase_transition(records, DeploymentPhase.B, config)
+        assert not advice.ready
+        assert len(advice.conditions) == 2
+        assert not advice.conditions[0].met  # sample count
+
+    def test_not_ready_low_f1(self) -> None:
+        # Random scores with labels = poor F1
+        records: list[dict[str, object]] = []
+        for i in range(200):
+            records.append({
+                "timestamp": f"2025-01-01T{i % 24:02d}:00:00+00:00",
+                "score": (i % 10) * 0.1,
+                "label": i % 2,
+            })
+        config = PhaseTransitionConfig(
+            min_eval_samples=100, f1_threshold=0.95,
+        )
+        advice = _advise_phase_transition(records, DeploymentPhase.B, config)
+        assert not advice.ready
+
+    def test_ready_with_high_f1(self) -> None:
+        records = self._make_good_records(200)
+        config = PhaseTransitionConfig(
+            min_eval_samples=100, f1_threshold=0.90,
+        )
+        advice = _advise_phase_transition(records, DeploymentPhase.B, config)
+        assert advice.ready
+        assert "Phase C" in advice.recommendation
+        assert "doctor" in advice.recommendation
+
+
+class TestPhaseAdvisorPhaseC:
+    def test_not_ready_short_operation(self) -> None:
+        records = _make_records(60, day="2025-01-01")
+        config = PhaseTransitionConfig(min_operation_days=30)
+        advice = _advise_phase_transition(records, DeploymentPhase.C, config)
+        assert not advice.ready
+        assert not advice.conditions[0].met  # operation period
+
+    def test_ready_with_long_operation(self) -> None:
+        records: list[dict[str, object]] = []
+        for i in range(60):
+            day = f"2025-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}"
+            records.append({
+                "timestamp": f"{day}T12:00:00+00:00",
+                "score": 0.5 + (i % 5) * 0.01,
+            })
+        config = PhaseTransitionConfig(min_operation_days=30)
+        advice = _advise_phase_transition(records, DeploymentPhase.C, config)
+        assert advice.conditions[0].met  # operation period met
+        assert advice.conditions[1].met  # no drift
+
+
+class TestPhaseAdvisorPhaseD:
+    def test_phase_d_no_transition(self) -> None:
+        records = _make_records(60)
+        advice = _advise_phase_transition(records, DeploymentPhase.D)
+        assert not advice.ready
+        assert advice.current_phase == DeploymentPhase.D
+        assert "継続" in advice.recommendation
+
+
+class TestAnalyzeWithPhase:
+    def test_no_phase_advice_by_default(self) -> None:
+        records = _make_records(60)
+        report = analyze(records)
+        assert report.phase_advice is None
+
+    def test_phase_advice_when_phase_set(self) -> None:
+        records = _make_records(60, label=1)
+        report = analyze(records, current_phase=DeploymentPhase.A)
+        assert report.phase_advice is not None
+        assert report.phase_advice.current_phase == DeploymentPhase.A
+
+    def test_phase_advice_with_custom_config(self) -> None:
+        records = _make_records(100, label=1)
+        config = PhaseTransitionConfig(min_labeled_for_training=50)
+        report = analyze(
+            records,
+            current_phase=DeploymentPhase.A,
+            phase_config=config,
+        )
+        assert report.phase_advice is not None
+        assert report.phase_advice.ready
 
 
 # ── monitor command tests ───────────────────────────────────────
@@ -696,4 +865,30 @@ class TestMonitorCommand:
                 f.write(json.dumps(r) + "\n")
 
         exit_code = main(["monitor", str(log_file), "--period", "30"])
+        assert exit_code == 0
+
+    def test_phase_option(self, tmp_path: Path) -> None:
+        from tobira.cli import main
+
+        log_file = tmp_path / "test.jsonl"
+        records = _make_records(40, label=1)
+        with open(log_file, "w") as f:
+            for r in records:
+                f.write(json.dumps(r) + "\n")
+
+        exit_code = main(["monitor", str(log_file), "--phase", "A"])
+        assert exit_code == 0
+
+    def test_phase_option_json(self, tmp_path: Path) -> None:
+        from tobira.cli import main
+
+        log_file = tmp_path / "test.jsonl"
+        records = _make_records(40, label=1)
+        with open(log_file, "w") as f:
+            for r in records:
+                f.write(json.dumps(r) + "\n")
+
+        exit_code = main([
+            "monitor", str(log_file), "--phase", "B", "--format", "json",
+        ])
         assert exit_code == 0

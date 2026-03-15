@@ -1,6 +1,9 @@
 """tobira.monitoring - prediction metrics logging and drift detection."""
 
 __all__ = [
+    "DeploymentPhase",
+    "PhaseAdvice",
+    "PhaseTransitionConfig",
     "PredictionCollector",
     "analyze",
     "analyze_drift_from_redis",
@@ -16,6 +19,10 @@ def __getattr__(name: str):  # type: ignore[no-untyped-def]
         from tobira.monitoring.collector import PredictionCollector
 
         return PredictionCollector
+    if name in ("DeploymentPhase", "PhaseAdvice", "PhaseTransitionConfig"):
+        from tobira.monitoring import analyzer
+
+        return getattr(analyzer, name)
     if name == "analyze":
         from tobira.monitoring.analyzer import analyze
 
