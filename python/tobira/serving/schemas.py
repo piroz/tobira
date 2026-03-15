@@ -67,6 +67,41 @@ class PredictResponse(BaseModel):
     )
 
 
+class FeedbackRequest(BaseModel):
+    """Request body for POST /feedback."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "text": "Buy now! Limited offer!!!",
+                    "label": "spam",
+                    "source": "rspamd",
+                },
+            ],
+        },
+    )
+
+    text: str = Field(..., max_length=MAX_TEXT_LENGTH)
+    label: str = Field(..., pattern=r"^(spam|ham)$")
+    source: str = Field(default="unknown", max_length=256)
+
+
+class FeedbackResponse(BaseModel):
+    """Response body for POST /feedback."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"status": "accepted", "id": "feedback-uuid"},
+            ],
+        },
+    )
+
+    status: str
+    id: str
+
+
 class HealthResponse(BaseModel):
     """Response body for GET /health."""
 

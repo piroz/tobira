@@ -50,6 +50,37 @@ class TobiraClient {
   }
 
   /**
+   * Call POST /feedback.
+   *
+   * @param {string} text   The email text to report.
+   * @param {string} label  "spam" or "ham".
+   * @param {string} [source="unknown"]  Reporting MTA identifier.
+   * @returns {Promise<{status: string, id: string}>}
+   */
+  async feedback(text, label, source = "unknown") {
+    const url = `${this.baseUrl}/feedback`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, label, source }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(`tobira API error: ${res.status} ${res.statusText}`);
+      }
+
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * Call GET /health.
    *
    * @returns {Promise<{status: string}>}

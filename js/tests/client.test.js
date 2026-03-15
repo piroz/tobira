@@ -96,6 +96,74 @@ describe("TobiraClient", () => {
     });
   });
 
+  describe("feedback", () => {
+    it("should POST to /feedback and return result", async () => {
+      const expected = { status: "accepted", id: "abc-123" };
+      globalThis.fetch = mock.fn(async () => ({
+        ok: true,
+        json: async () => expected,
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      const result = await client.feedback("spam email", "spam", "rspamd");
+
+      assert.deepEqual(result, expected);
+
+      const call = globalThis.fetch.mock.calls[0];
+      assert.equal(call.arguments[0], "http://localhost:8000/feedback");
+      const opts = call.arguments[1];
+      assert.equal(opts.method, "POST");
+      assert.equal(opts.headers["Content-Type"], "application/json");
+      const body = JSON.parse(opts.body);
+      assert.equal(body.text, "spam email");
+      assert.equal(body.label, "spam");
+      assert.equal(body.source, "rspamd");
+    });
+
+    it("should use default source when not provided", async () => {
+      globalThis.fetch = mock.fn(async () => ({
+        ok: true,
+        json: async () => ({ status: "accepted", id: "abc-123" }),
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      await client.feedback("text", "ham");
+
+      const body = JSON.parse(globalThis.fetch.mock.calls[0].arguments[1].body);
+      assert.equal(body.source, "unknown");
+    });
+
+    it("should throw on non-ok response", async () => {
+      globalThis.fetch = mock.fn(async () => ({
+        ok: false,
+        status: 422,
+        statusText: "Unprocessable Entity",
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      await assert.rejects(
+        () => client.feedback("text", "invalid"),
+        { message: "tobira API error: 422 Unprocessable Entity" }
+      );
+    });
+
+    it("should propagate abort errors on timeout", async () => {
+      globalThis.fetch = mock.fn(async (_url, opts) => {
+        return new Promise((_resolve, reject) => {
+          opts.signal.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        });
+      });
+
+      const client = new TobiraClient("http://localhost:8000", { timeout: 1 });
+      await assert.rejects(
+        () => client.feedback("text", "spam"),
+        { name: "AbortError" }
+      );
+    });
+  });
+
   describe("health", () => {
     it("should GET /health and return result", async () => {
       const expected = { status: "ok" };

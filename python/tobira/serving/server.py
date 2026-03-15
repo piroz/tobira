@@ -23,6 +23,7 @@ def _import_deps() -> tuple[Any, Any]:
 def create_app(
     backend: BackendProtocol,
     monitoring: Optional[dict[str, Any]] = None,
+    feedback: Optional[dict[str, Any]] = None,
 ) -> Any:
     """Create a FastAPI application with the given backend.
 
@@ -31,6 +32,9 @@ def create_app(
         monitoring: Optional monitoring configuration dict.
             When ``{"enabled": true}`` is set, prediction metrics are logged
             to a JSONL file. Accepts an optional ``log_path`` key.
+        feedback: Optional feedback configuration dict.
+            When ``{"enabled": true}`` is set, the ``POST /feedback``
+            endpoint is registered. Accepts an optional ``store_path`` key.
 
     Returns:
         A FastAPI application.
@@ -61,6 +65,19 @@ def create_app(
             redis_key_prefix=redis_key_prefix,
             redis_window_seconds=redis_window,
         )
+
+    if feedback and feedback.get("enabled"):
+        from tobira.data.feedback_store import DEFAULT_FEEDBACK_PATH, store_feedback
+        from tobira.serving.schemas import FeedbackRequest, FeedbackResponse
+
+        feedback_path = feedback.get("store_path", DEFAULT_FEEDBACK_PATH)
+
+        @app.post("/feedback", response_model=FeedbackResponse, tags=["feedback"])
+        async def receive_feedback(req: FeedbackRequest) -> FeedbackResponse:
+            record = store_feedback(
+                req.text, req.label, req.source, path=feedback_path
+            )
+            return FeedbackResponse(status="accepted", id=record.id)
 
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:
@@ -105,5 +122,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     backend = create_backend(backend_config)
     monitoring_config = config.get("monitoring")
 
-    app = create_app(backend, monitoring=monitoring_config)
+    feedback_config = config.get("feedback")
+
+    app = create_app(backend, monitoring=monitoring_config, feedback=feedback_config)
     uvicorn.run(app, host=host, port=port, access_log=False)
