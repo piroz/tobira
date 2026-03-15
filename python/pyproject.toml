@@ -39,6 +39,9 @@ llm = [
 redis = [
     "redis>=4.0",
 ]
+multilingual = [
+    "langdetect>=1.0.9",
+]
 
 [project.scripts]
 tobira = "tobira.cli:main"
@@ -52,7 +55,7 @@ dev = [
     "pytest-cov>=6.0",
     "httpx>=0.24",
     "mypy>=1.10",
-    "tobira[fasttext,bert,serving,evaluation,onnx,llm]",
+    "tobira[fasttext,bert,serving,evaluation,onnx,llm,redis,multilingual]",
 ]
 
 [tool.mypy]
@@ -82,6 +85,8 @@ module = [
     "spacy.*",
     "ginza",
     "redis",
+    "langdetect",
+    "langdetect.*",
 ]
 ignore_missing_imports = true
 

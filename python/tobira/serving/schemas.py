@@ -12,11 +12,19 @@ class PredictRequest(BaseModel):
 
     model_config = ConfigDict(
         json_schema_extra={
-            "examples": [{"text": "Buy now! Limited offer!!!"}],
+            "examples": [
+                {"text": "Buy now! Limited offer!!!"},
+                {"text": "お買い得！今すぐ購入！", "language": "ja"},
+            ],
         },
     )
 
     text: str = Field(..., max_length=MAX_TEXT_LENGTH)
+    language: str | None = Field(
+        default=None,
+        description="ISO 639-1 language code (e.g. 'ja', 'en', 'ko'). "
+        "When omitted, language is auto-detected.",
+    )
 
 
 class PredictResponse(BaseModel):
@@ -25,7 +33,12 @@ class PredictResponse(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [
-                {"label": "spam", "score": 0.95, "labels": {"spam": 0.95, "ham": 0.05}},
+                {
+                    "label": "spam",
+                    "score": 0.95,
+                    "labels": {"spam": 0.95, "ham": 0.05},
+                    "language": "en",
+                },
                 {
                     "label": "phishing",
                     "score": 0.82,
@@ -48,6 +61,10 @@ class PredictResponse(BaseModel):
     label: str
     score: float
     labels: dict[str, float]
+    language: str | None = Field(
+        default=None,
+        description="Detected or specified language code.",
+    )
 
 
 class HealthResponse(BaseModel):

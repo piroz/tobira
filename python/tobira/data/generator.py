@@ -6,7 +6,20 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from tobira.data.categories import Category, get_category
+from tobira.data.categories import (
+    Category,
+    get_categories_for_language,
+    get_category,
+)
+
+# Mapping from language code to the instruction language name used in prompts.
+_LANGUAGE_NAMES: dict[str, str] = {
+    "ja": "Japanese",
+    "en": "English",
+    "ko": "Korean",
+    "zh-cn": "Simplified Chinese",
+    "zh-tw": "Traditional Chinese",
+}
 
 
 def _import_httpx() -> Any:
@@ -34,11 +47,18 @@ class SyntheticSample:
     category: str
 
 
-def _build_prompt(category: Category, count: int) -> str:
+def _build_prompt(
+    category: Category, count: int, *, language: str | None = None
+) -> str:
     """Build a prompt asking the LLM to generate samples."""
+    lang_instruction = ""
+    if language is not None:
+        lang_name = _LANGUAGE_NAMES.get(language, language)
+        lang_instruction = f" Write the messages in {lang_name}."
+
     return (
         f"Generate {count} realistic example messages for the category "
-        f'"{category.label}" ({category.description}).\n'
+        f'"{category.label}" ({category.description}).{lang_instruction}\n'
         "Return a JSON array of strings, each being one example message.\n"
         "Return ONLY the JSON array, no other text."
     )
@@ -52,6 +72,7 @@ def generate(
     base_url: str = "https://api.openai.com/v1",
     api_key: str = "",
     client: Any = None,
+    language: str | None = None,
 ) -> list[SyntheticSample]:
     """Generate synthetic samples for a *category* using an LLM API.
 
@@ -62,6 +83,10 @@ def generate(
         base_url: API base URL.
         api_key: API key for the LLM service.
         client: Optional pre-configured httpx ``Client``.
+        language: ISO 639-1 language code for the generated text.
+            When set, the LLM is instructed to generate messages in the
+            specified language and language-specific category descriptions
+            are used.  Defaults to ``None`` (English / no constraint).
 
     Returns:
         A list of :class:`SyntheticSample` instances.
@@ -73,10 +98,21 @@ def generate(
     if count <= 0:
         raise ValueError("count must be positive")
 
-    # Look up category (searches binary + multiclass catalogues)
-    cat = get_category(category)
+    # Look up category: use language-specific definitions when language is
+    # specified, otherwise search binary + multiclass catalogues.
+    if language:
+        categories = get_categories_for_language(language)
+        cat: Category | None = None
+        for c in categories:
+            if c.name == category:
+                cat = c
+                break
+        if cat is None:
+            raise KeyError(f"Unknown category: {category!r}")
+    else:
+        cat = get_category(category)
 
-    prompt = _build_prompt(cat, count)
+    prompt = _build_prompt(cat, count, language=language)
 
     httpx = _import_httpx()
     if client is None:

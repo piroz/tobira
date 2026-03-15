@@ -65,10 +65,22 @@ def create_app(
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:
         result = app.state.backend.predict(req.text)
+
+        language = req.language
+        if language is None:
+            try:
+                from tobira.preprocessing.language import detect_language
+
+                lang_result = detect_language(req.text)
+                language = lang_result.language
+            except (ImportError, ValueError):
+                pass
+
         return PredictResponse(
             label=result.label,
             score=result.score,
             labels=result.labels,
+            language=language,
         )
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])

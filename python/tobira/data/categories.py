@@ -112,6 +112,61 @@ MULTICLASS_CATEGORIES: tuple[Category, ...] = (
     *SPAM_SUBCATEGORIES,
 )
 
+# Language-specific category descriptions for multilingual data generation.
+# Each key is an ISO 639-1 language code; values mirror SPAM_CATEGORIES
+# but with localised descriptions suitable for LLM prompts in that language.
+LANGUAGE_CATEGORIES: dict[str, tuple[Category, ...]] = {
+    "ja": (
+        Category(
+            name="spam",
+            label="Spam",
+            description="未承諾の商業メッセージや詐欺メッセージ。",
+        ),
+        Category(
+            name="ham",
+            label="Ham",
+            description="正当な非スパムメッセージ。",
+        ),
+    ),
+    "en": SPAM_CATEGORIES,
+    "ko": (
+        Category(
+            name="spam",
+            label="Spam",
+            description="원치 않는 상업 메시지 또는 사기 메시지.",
+        ),
+        Category(
+            name="ham",
+            label="Ham",
+            description="정상적인 비스팸 메시지.",
+        ),
+    ),
+    "zh-cn": (
+        Category(
+            name="spam",
+            label="Spam",
+            description="未经请求的商业或欺诈邮件。",
+        ),
+        Category(
+            name="ham",
+            label="Ham",
+            description="合法的非垃圾邮件。",
+        ),
+    ),
+    "zh-tw": (
+        Category(
+            name="spam",
+            label="Spam",
+            description="未經請求的商業或詐騙郵件。",
+        ),
+        Category(
+            name="ham",
+            label="Ham",
+            description="合法的非垃圾郵件。",
+        ),
+    ),
+}
+
 
 def get_category(name: str) -> Category:
     """Look up a category by *name* from binary or multiclass catalogues.
@@ -131,3 +186,18 @@ def get_category(name: str) -> Category:
         if cat.name == name:
             return cat
     raise KeyError(f"Unknown category: {name!r}")
+
+
+def get_categories_for_language(language: str) -> tuple[Category, ...]:
+    """Return category definitions localised for *language*.
+
+    Falls back to the default (English) categories when the language is not
+    explicitly supported.
+
+    Args:
+        language: ISO 639-1 language code (e.g. ``ja``, ``en``, ``ko``).
+
+    Returns:
+        A tuple of :class:`Category` instances.
+    """
+    return LANGUAGE_CATEGORIES.get(language, SPAM_CATEGORIES)

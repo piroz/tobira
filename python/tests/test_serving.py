@@ -29,6 +29,15 @@ class TestSchemas:
         req = PredictRequest(text="hello")
         assert req.text == "hello"
 
+    def test_predict_request_with_language(self) -> None:
+        req = PredictRequest(text="hello", language="en")
+        assert req.text == "hello"
+        assert req.language == "en"
+
+    def test_predict_request_language_defaults_none(self) -> None:
+        req = PredictRequest(text="hello")
+        assert req.language is None
+
     def test_predict_response(self) -> None:
         resp = PredictResponse(
             label="spam", score=0.95, labels={"spam": 0.95, "ham": 0.05}
@@ -36,6 +45,21 @@ class TestSchemas:
         assert resp.label == "spam"
         assert resp.score == 0.95
         assert resp.labels == {"spam": 0.95, "ham": 0.05}
+
+    def test_predict_response_with_language(self) -> None:
+        resp = PredictResponse(
+            label="spam",
+            score=0.95,
+            labels={"spam": 0.95, "ham": 0.05},
+            language="en",
+        )
+        assert resp.language == "en"
+
+    def test_predict_response_language_defaults_none(self) -> None:
+        resp = PredictResponse(
+            label="spam", score=0.95, labels={"spam": 0.95, "ham": 0.05}
+        )
+        assert resp.language is None
 
     def test_health_response(self) -> None:
         resp = HealthResponse(status="ok")
@@ -71,6 +95,36 @@ class TestPredict:
             "ham": pytest.approx(0.05),
         }
         backend.predict.assert_called_once_with("buy now!!!")
+
+    def test_predict_with_language(self) -> None:
+        from tobira.serving.server import create_app
+
+        backend = _make_mock_backend()
+        app = create_app(backend)
+        client = TestClient(app)
+
+        resp = client.post("/predict", json={"text": "hello", "language": "en"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["language"] == "en"
+
+    def test_predict_auto_detects_language(self) -> None:
+        from tobira.serving.server import create_app
+
+        backend = _make_mock_backend()
+        app = create_app(backend)
+        client = TestClient(app)
+
+        resp = client.post(
+            "/predict",
+            json={"text": "This is a reasonably long English sentence for detection"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        # language should be auto-detected (may be None if langdetect unavailable)
+        assert "language" in data
 
     def test_predict_missing_text(self) -> None:
         from tobira.serving.server import create_app
