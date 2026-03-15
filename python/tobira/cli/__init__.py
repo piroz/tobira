@@ -40,6 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_evaluate(subparsers)
 
+    from tobira.cli.hub_cmd import register as register_hub
+
+    register_hub(subparsers)
+
     return parser
 
 

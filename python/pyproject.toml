@@ -42,6 +42,9 @@ redis = [
 multilingual = [
     "langdetect>=1.0.9",
 ]
+hub = [
+    "huggingface_hub>=0.20",
+]
 
 [project.scripts]
 tobira = "tobira.cli:main"
@@ -55,7 +58,7 @@ dev = [
     "pytest-cov>=6.0",
     "httpx>=0.24",
     "mypy>=1.10",
-    "tobira[fasttext,bert,serving,evaluation,onnx,llm,redis,multilingual]",
+    "tobira[fasttext,bert,serving,evaluation,onnx,llm,redis,multilingual,hub]",
 ]
 
 [tool.mypy]
@@ -87,6 +90,8 @@ module = [
     "redis",
     "langdetect",
     "langdetect.*",
+    "huggingface_hub",
+    "huggingface_hub.*",
 ]
 ignore_missing_imports = true
 
