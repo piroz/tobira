@@ -24,6 +24,7 @@ def create_app(
     backend: BackendProtocol,
     monitoring: Optional[dict[str, Any]] = None,
     feedback: Optional[dict[str, Any]] = None,
+    dashboard: Optional[dict[str, Any]] = None,
     ai_detection: Optional[dict[str, Any]] = None,
 ) -> Any:
     """Create a FastAPI application with the given backend.
@@ -36,6 +37,9 @@ def create_app(
         feedback: Optional feedback configuration dict.
             When ``{"enabled": true}`` is set, the ``POST /feedback``
             endpoint is registered. Accepts an optional ``store_path`` key.
+        dashboard: Optional dashboard configuration dict.
+            When ``{"enabled": true}`` is set, the web dashboard is served
+            at ``/dashboard`` with stats API endpoints.
         ai_detection: Optional AI-generated text detection configuration.
             When ``{"enabled": true}`` is set, each prediction response
             includes an ``ai_generated`` field. Accepts an optional
@@ -96,6 +100,16 @@ def create_app(
             )
             return FeedbackResponse(status="accepted", id=record.id)
 
+    if dashboard and dashboard.get("enabled"):
+        from tobira.serving.dashboard import register_dashboard_routes
+
+        log_path = "/var/lib/tobira/predictions.jsonl"
+        if monitoring and monitoring.get("log_path"):
+            log_path = monitoring["log_path"]
+        if dashboard.get("log_path"):
+            log_path = dashboard["log_path"]
+        register_dashboard_routes(app, log_path=log_path)
+
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:
         result = app.state.backend.predict(req.text)
@@ -150,12 +164,14 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     monitoring_config = config.get("monitoring")
 
     feedback_config = config.get("feedback")
+    dashboard_config = config.get("dashboard")
     ai_detection_config = config.get("ai_detection")
 
     app = create_app(
         backend,
         monitoring=monitoring_config,
         feedback=feedback_config,
+        dashboard=dashboard_config,
         ai_detection=ai_detection_config,
     )
     uvicorn.run(app, host=host, port=port, access_log=False)
