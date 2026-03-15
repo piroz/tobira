@@ -27,6 +27,14 @@ class PredictRequest(BaseModel):
     )
 
 
+class AIGeneratedInfo(BaseModel):
+    """AI-generated text detection result embedded in prediction responses."""
+
+    detected: bool
+    confidence: float
+    indicators: list[str] = Field(default_factory=list)
+
+
 class PredictResponse(BaseModel):
     """Response body for POST /predict."""
 
@@ -54,6 +62,20 @@ class PredictResponse(BaseModel):
                         "tech_support": 0.01,
                     },
                 },
+                {
+                    "label": "spam",
+                    "score": 0.92,
+                    "labels": {"spam": 0.92, "ham": 0.08},
+                    "language": "en",
+                    "ai_generated": {
+                        "detected": True,
+                        "confidence": 0.85,
+                        "indicators": [
+                            "low_entropy",
+                            "uniform_vocabulary",
+                        ],
+                    },
+                },
             ],
         },
     )
@@ -64,6 +86,11 @@ class PredictResponse(BaseModel):
     language: str | None = Field(
         default=None,
         description="Detected or specified language code.",
+    )
+    ai_generated: AIGeneratedInfo | None = Field(
+        default=None,
+        description="AI-generated text detection result. "
+        "Present only when ai_detection is enabled in server config.",
     )
 
 

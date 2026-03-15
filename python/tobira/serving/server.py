@@ -24,6 +24,7 @@ def create_app(
     backend: BackendProtocol,
     monitoring: Optional[dict[str, Any]] = None,
     feedback: Optional[dict[str, Any]] = None,
+    ai_detection: Optional[dict[str, Any]] = None,
 ) -> Any:
     """Create a FastAPI application with the given backend.
 
@@ -35,6 +36,10 @@ def create_app(
         feedback: Optional feedback configuration dict.
             When ``{"enabled": true}`` is set, the ``POST /feedback``
             endpoint is registered. Accepts an optional ``store_path`` key.
+        ai_detection: Optional AI-generated text detection configuration.
+            When ``{"enabled": true}`` is set, each prediction response
+            includes an ``ai_generated`` field. Accepts an optional
+            ``threshold`` key (default 0.65).
 
     Returns:
         A FastAPI application.
@@ -42,7 +47,19 @@ def create_app(
     fastapi, _ = _import_deps()
 
     import tobira
-    from tobira.serving.schemas import HealthResponse, PredictRequest, PredictResponse
+    from tobira.serving.schemas import (
+        AIGeneratedInfo,
+        HealthResponse,
+        PredictRequest,
+        PredictResponse,
+    )
+
+    ai_detector = None
+    if ai_detection and ai_detection.get("enabled"):
+        from tobira.adversarial.ai_generated import AIGeneratedDetector
+
+        threshold = ai_detection.get("threshold", 0.65)
+        ai_detector = AIGeneratedDetector(threshold=threshold)
 
     app = fastapi.FastAPI(
         title="tobira",
@@ -93,11 +110,21 @@ def create_app(
             except (ImportError, ValueError):
                 pass
 
+        ai_generated = None
+        if ai_detector is not None:
+            ai_result = ai_detector.detect(req.text)
+            ai_generated = AIGeneratedInfo(
+                detected=ai_result.detected,
+                confidence=ai_result.confidence,
+                indicators=ai_result.indicators,
+            )
+
         return PredictResponse(
             label=result.label,
             score=result.score,
             labels=result.labels,
             language=language,
+            ai_generated=ai_generated,
         )
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
@@ -123,6 +150,12 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     monitoring_config = config.get("monitoring")
 
     feedback_config = config.get("feedback")
+    ai_detection_config = config.get("ai_detection")
 
-    app = create_app(backend, monitoring=monitoring_config, feedback=feedback_config)
+    app = create_app(
+        backend,
+        monitoring=monitoring_config,
+        feedback=feedback_config,
+        ai_detection=ai_detection_config,
+    )
     uvicorn.run(app, host=host, port=port, access_log=False)
