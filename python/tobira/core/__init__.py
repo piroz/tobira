@@ -1,4 +1,4 @@
-"""tobira.core - Core utilities for model export and conversion."""
+"""tobira.core - Core utilities for model export, conversion, and distillation."""
 
 from tobira.core.export import export_onnx, quantize_dynamic
 
