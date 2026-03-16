@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.0](https://github.com/piroz/tobira/compare/tobira-python-v0.1.0...tobira-python-v0.2.0) (2026-03-16)
+
+
+### Features
+
+* **adversarial:** add AI-generated text detection ([#64](https://github.com/piroz/tobira/issues/64)) ([2b3c867](https://github.com/piroz/tobira/commit/2b3c8675233422d3c4292ce65f51a2c6be087e4d))
+* **backends:** add header-based classification ([#65](https://github.com/piroz/tobira/issues/65)) ([0fa9573](https://github.com/piroz/tobira/commit/0fa95730e710453aa7628449a93a9085bbbe12bd))
+* **cli:** add tobira monitor --watch daemon mode ([#61](https://github.com/piroz/tobira/issues/61)) ([4a41e84](https://github.com/piroz/tobira/commit/4a41e84d90fc4bb587dd43047155a4c4d7590a48))
+* **core:** add knowledge distillation pipeline ([#68](https://github.com/piroz/tobira/issues/68)) ([c6d4d5b](https://github.com/piroz/tobira/commit/c6d4d5b8c552aef841e1b3af3233a97285f108e6))
+* **integrations:** add Postfix milter integration ([#66](https://github.com/piroz/tobira/issues/66)) ([16029b9](https://github.com/piroz/tobira/commit/16029b969447dbb33e7989059d06925acf252b5f))
+* **monitoring:** add automatic retrain trigger ([#62](https://github.com/piroz/tobira/issues/62)) ([724ce01](https://github.com/piroz/tobira/commit/724ce011eeaa05ec5139bd398a741510ad7a3b70))
+* **monitoring:** add phase transition advisor ([#63](https://github.com/piroz/tobira/issues/63)) ([ef3a53a](https://github.com/piroz/tobira/commit/ef3a53a4fa74ee4f507c4b679904b65968acbd0a))
+* **serving:** add web dashboard for monitoring and statistics ([#67](https://github.com/piroz/tobira/issues/67)) ([cd85e7b](https://github.com/piroz/tobira/commit/cd85e7bbe52e98e69f2bb5cdd1c1dacd187e8596))
+
+
+### Bug Fixes
+
+* **backends:** patch NumPy 2.x compat for fasttext predict ([#60](https://github.com/piroz/tobira/issues/60)) ([3a3a2e8](https://github.com/piroz/tobira/commit/3a3a2e8d1edf397c18ef9248246eb341190495c1))
+
 ## [0.1.0](https://github.com/piroz/tobira/compare/tobira-python-v0.0.1...tobira-python-v0.1.0) (2026-03-15)
 
 
