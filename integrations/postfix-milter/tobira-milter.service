@@ -1,0 +1,24 @@
+[Unit]
+Description=tobira milter for Postfix
+After=network.target tobira.service
+Wants=tobira.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/tobira milter --config /etc/tobira/milter.conf
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+User=tobira
+Group=tobira
+RuntimeDirectory=tobira
+RuntimeDirectoryMode=0755
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

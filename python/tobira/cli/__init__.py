@@ -44,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_hub(subparsers)
 
+    from tobira.cli.milter_cmd import register as register_milter
+
+    register_milter(subparsers)
     from tobira.cli.distill import register as register_distill
 
     register_distill(subparsers)

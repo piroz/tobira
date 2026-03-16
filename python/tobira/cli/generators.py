@@ -24,6 +24,16 @@ _MTA_FILES: dict[str, list[tuple[str, str]]] = {
         ("haraka/config/tobira.ini", "/etc/haraka/config/tobira.ini"),
         ("haraka/plugins/tobira.js", "/etc/haraka/plugins/tobira.js"),
     ],
+    "postfix": [
+        (
+            "postfix-milter/tobira-milter.conf",
+            "/etc/tobira/milter.conf",
+        ),
+        (
+            "postfix-milter/tobira-milter.service",
+            "/etc/systemd/system/tobira-milter.service",
+        ),
+    ],
 }
 
 # Default API URL placeholder pattern used in templates.
@@ -103,6 +113,14 @@ def get_install_instructions(mta: str, output_dir: Path) -> list[str]:
         "rspamd": "  sudo rspamadm configtest && sudo systemctl reload rspamd",
         "spamassassin": "  sudo systemctl restart spamassassin",
         "haraka": "  sudo systemctl restart haraka",
+        "postfix": (
+            "  sudo systemctl daemon-reload\n"
+            "  sudo systemctl enable --now tobira-milter\n"
+            "  # Add to Postfix main.cf:\n"
+            "  #   smtpd_milters = unix:/var/run/tobira/milter.sock\n"
+            "  #   milter_default_action = accept\n"
+            "  sudo postfix reload"
+        ),
     }
     if mta in reload_cmds:
         instructions.append(reload_cmds[mta])

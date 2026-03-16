@@ -432,9 +432,9 @@ class TestMTADetectors:
         from tobira.cli.mta_detectors import detect_mtas
 
         result = detect_mtas()
-        assert len(result) == 3
+        assert len(result) == 4
         names = {d.name for d in result}
-        assert names == {"rspamd", "spamassassin", "haraka"}
+        assert names == {"rspamd", "spamassassin", "haraka", "postfix"}
 
 
 class TestGenerators:
@@ -510,7 +510,7 @@ class TestGenerators:
 
         output = Path(str(tmp_path))
         with pytest.raises(ValueError, match="unsupported MTA"):
-            generate_configs(mta="postfix", output_dir=output)
+            generate_configs(mta="unknown_mta", output_dir=output)
 
     def test_get_install_instructions(self, tmp_path: "os.PathLike[str]") -> None:
         from pathlib import Path
@@ -529,7 +529,9 @@ class TestGenerators:
 
         from tobira.cli.generators import get_install_instructions
 
-        instructions = get_install_instructions(mta="postfix", output_dir=Path("/tmp"))
+        instructions = get_install_instructions(
+            mta="unknown_mta", output_dir=Path("/tmp"),
+        )
         assert instructions == []
 
 

@@ -26,6 +26,7 @@ _PROCESS_NAMES: dict[str, list[str]] = {
     "rspamd": ["rspamd"],
     "spamassassin": ["spamd"],
     "haraka": ["haraka"],
+    "postfix": ["master"],
 }
 
 # Mapping of MTA name to systemd unit names.
@@ -33,6 +34,7 @@ _SYSTEMD_UNITS: dict[str, list[str]] = {
     "rspamd": ["rspamd.service"],
     "spamassassin": ["spamassassin.service", "spamd.service"],
     "haraka": ["haraka.service"],
+    "postfix": ["postfix.service", "postfix@-.service"],
 }
 
 # Mapping of MTA name to config directories.
@@ -40,6 +42,7 @@ _CONFIG_DIRS: dict[str, list[str]] = {
     "rspamd": ["/etc/rspamd"],
     "spamassassin": ["/etc/spamassassin", "/etc/mail/spamassassin"],
     "haraka": ["/etc/haraka"],
+    "postfix": ["/etc/postfix"],
 }
 
 
@@ -90,7 +93,7 @@ def detect_mtas() -> list[DetectedMTA]:
     """Detect installed MTA services.
 
     Checks process lists, systemd units, and configuration directories
-    for known MTA services (rspamd, spamassassin, haraka).
+    for known MTA services (rspamd, spamassassin, haraka, postfix).
 
     Returns:
         List of detected MTA services with detection source.

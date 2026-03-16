@@ -45,6 +45,9 @@ multilingual = [
 hub = [
     "huggingface_hub>=0.20",
 ]
+milter = [
+    "pymilter>=1.0.4",
+]
 
 [project.scripts]
 tobira = "tobira.cli:main"
@@ -92,6 +95,8 @@ module = [
     "langdetect.*",
     "huggingface_hub",
     "huggingface_hub.*",
+    "Milter",
+    "Milter.*",
 ]
 ignore_missing_imports = true
 

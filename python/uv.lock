@@ -2846,6 +2846,12 @@ wheels = [
 ]
 
 [[package]]
+name = "pymilter"
+version = "1.0.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/59/e028e592220cf3a90affcfa28a8f3d8d6c3badb219763bfae03ffdac0d79/pymilter-1.0.5.tar.gz", hash = "sha256:2fac54d5b5ccca87786ad25eb0057a40bee6d5d3f71d7a6d5fe495ab6e460c3f", size = 1013343, upload-time = "2021-12-31T05:31:37.969Z" }
+
+[[package]]
 name = "pyparsing"
 version = "3.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3464,6 +3470,9 @@ hub = [
 llm = [
     { name = "httpx" },
 ]
+milter = [
+    { name = "pymilter" },
+]
 multilingual = [
     { name = "langdetect" },
 ]
@@ -3508,6 +3517,7 @@ requires-dist = [
     { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.16" },
     { name = "optimum", marker = "extra == 'onnx'", specifier = ">=1.13" },
     { name = "pydantic", marker = "extra == 'serving'", specifier = ">=2.0" },
+    { name = "pymilter", marker = "extra == 'milter'", specifier = ">=1.0.4" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=4.0" },
     { name = "tomli", marker = "python_full_version < '3.11' and extra == 'serving'", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'bert'", specifier = ">=2.0" },
@@ -3515,7 +3525,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'onnx'", specifier = ">=4.30" },
     { name = "uvicorn", marker = "extra == 'serving'", specifier = ">=0.20" },
 ]
-provides-extras = ["fasttext", "bert", "serving", "evaluation", "onnx", "llm", "redis", "multilingual", "hub"]
+provides-extras = ["fasttext", "bert", "serving", "evaluation", "onnx", "llm", "redis", "multilingual", "hub", "milter"]
 
 [package.metadata.requires-dev]
 dev = [
