@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/piroz/tobira/compare/tobira-js-v0.1.0...tobira-js-v0.2.0) (2026-03-16)
+
+
+### Features
+
+* **backends:** add header-based classification ([#65](https://github.com/piroz/tobira/issues/65)) ([0fa9573](https://github.com/piroz/tobira/commit/0fa95730e710453aa7628449a93a9085bbbe12bd))
+
 ## [0.1.0](https://github.com/piroz/tobira/compare/tobira-js-v0.0.1...tobira-js-v0.1.0) (2026-03-15)
 
 
