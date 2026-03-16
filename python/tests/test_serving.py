@@ -10,6 +10,7 @@ import pytest
 from tobira.backends.protocol import BackendProtocol, PredictionResult
 from tobira.serving.schemas import (
     MAX_TEXT_LENGTH,
+    EmailHeaders,
     HealthResponse,
     PredictRequest,
     PredictResponse,
@@ -37,6 +38,36 @@ class TestSchemas:
     def test_predict_request_language_defaults_none(self) -> None:
         req = PredictRequest(text="hello")
         assert req.language is None
+
+    def test_predict_request_headers_defaults_none(self) -> None:
+        req = PredictRequest(text="hello")
+        assert req.headers is None
+
+    def test_predict_request_with_headers(self) -> None:
+        req = PredictRequest(
+            text="hello",
+            headers=EmailHeaders(spf="pass", dkim="pass"),
+        )
+        assert req.headers is not None
+        assert req.headers.spf == "pass"
+        assert req.headers.dkim == "pass"
+
+    def test_email_headers_from_alias(self) -> None:
+        headers = EmailHeaders(**{"from": "user@example.com"})
+        assert headers.from_addr == "user@example.com"
+
+    def test_predict_response_header_score_defaults_none(self) -> None:
+        resp = PredictResponse(
+            label="spam", score=0.95, labels={"spam": 0.95, "ham": 0.05}
+        )
+        assert resp.header_score is None
+
+    def test_predict_response_with_header_score(self) -> None:
+        resp = PredictResponse(
+            label="spam", score=0.95, labels={"spam": 0.95, "ham": 0.05},
+            header_score=0.8,
+        )
+        assert resp.header_score == pytest.approx(0.8)
 
     def test_predict_response(self) -> None:
         resp = PredictResponse(
@@ -144,6 +175,87 @@ class TestPredict:
         long_text = "a" * (MAX_TEXT_LENGTH + 1)
         resp = client.post("/predict", json={"text": long_text})
         assert resp.status_code == 422
+
+    def test_predict_with_headers_no_analysis(self) -> None:
+        """Headers sent but header_analysis not enabled — ignored."""
+        from tobira.serving.server import create_app
+
+        backend = _make_mock_backend()
+        app = create_app(backend)
+        client = TestClient(app)
+
+        resp = client.post("/predict", json={
+            "text": "buy now!!!",
+            "headers": {"spf": "fail", "dkim": "fail"},
+        })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["header_score"] is None
+        assert data["score"] == pytest.approx(0.95)
+
+    def test_predict_with_headers_analysis_enabled(self) -> None:
+        """Headers with header_analysis enabled — score is blended."""
+        from tobira.serving.server import create_app
+
+        backend = _make_mock_backend()
+        app = create_app(
+            backend,
+            header_analysis={"enabled": True, "weight": 0.3},
+        )
+        client = TestClient(app)
+
+        resp = client.post("/predict", json={
+            "text": "buy now!!!",
+            "headers": {"spf": "fail", "dkim": "fail", "dmarc": "fail"},
+        })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["header_score"] is not None
+        assert data["header_score"] > 0.0
+        # Score should differ from raw backend score due to blending
+        assert data["score"] != pytest.approx(0.95)
+
+    def test_predict_with_headers_clean(self) -> None:
+        """Clean headers should lower the spam score."""
+        from tobira.serving.server import create_app
+
+        backend = _make_mock_backend()
+        app = create_app(
+            backend,
+            header_analysis={"enabled": True, "weight": 0.3},
+        )
+        client = TestClient(app)
+
+        resp = client.post("/predict", json={
+            "text": "buy now!!!",
+            "headers": {"spf": "pass", "dkim": "pass", "dmarc": "pass"},
+        })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["header_score"] is not None
+        # Clean headers should result in a lower blended score
+        assert data["score"] < 0.95
+
+    def test_predict_without_headers_analysis_enabled(self) -> None:
+        """No headers in request — header_analysis enabled but unused."""
+        from tobira.serving.server import create_app
+
+        backend = _make_mock_backend()
+        app = create_app(
+            backend,
+            header_analysis={"enabled": True, "weight": 0.3},
+        )
+        client = TestClient(app)
+
+        resp = client.post("/predict", json={"text": "buy now!!!"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["header_score"] is None
+        assert data["score"] == pytest.approx(0.95)
 
 
 @requires_fastapi

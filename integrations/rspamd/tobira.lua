@@ -31,6 +31,7 @@ local default_config = {
   timeout = 2.0,
   max_text_bytes = 65536,
   fail_open = true,
+  send_headers = false,
   symbols = {
     spam_high = {
       name = "TOBIRA_SPAM_HIGH",
@@ -133,7 +134,50 @@ local function tobira_callback(task)
     text = string.sub(text, 1, config.max_text_bytes)
   end
 
-  local request_body = encode_json({ text = text })
+  local payload = { text = text }
+
+  if config.send_headers then
+    local hdrs = {}
+
+    local from_hdr = task:get_header("From")
+    if from_hdr then hdrs["from"] = from_hdr end
+
+    local reply_to_hdr = task:get_header("Reply-To")
+    if reply_to_hdr then hdrs["reply_to"] = reply_to_hdr end
+
+    local ct_hdr = task:get_header("Content-Type")
+    if ct_hdr then hdrs["content_type"] = ct_hdr end
+
+    -- Extract authentication results from Authentication-Results header
+    local auth_results = task:get_header("Authentication-Results")
+    if auth_results then
+      local spf = auth_results:match("spf=(%w+)")
+      if spf then hdrs["spf"] = spf end
+
+      local dkim = auth_results:match("dkim=(%w+)")
+      if dkim then hdrs["dkim"] = dkim end
+
+      local dmarc = auth_results:match("dmarc=(%w+)")
+      if dmarc then hdrs["dmarc"] = dmarc end
+    end
+
+    -- Collect Received headers
+    local received = {}
+    local recv_hdrs = task:get_header_full("Received")
+    if recv_hdrs then
+      for _, h in ipairs(recv_hdrs) do
+        table.insert(received, h.value or h.decoded or "")
+      end
+    end
+    if #received > 0 then hdrs["received"] = received end
+
+    -- Only include headers if we extracted any
+    if next(hdrs) then
+      payload["headers"] = hdrs
+    end
+  end
+
+  local request_body = encode_json(payload)
 
   local function http_callback(err, code, body)
     if err then

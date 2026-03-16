@@ -24,18 +24,25 @@ class TobiraClient {
    * Call POST /predict.
    *
    * @param {string} text  The text to classify.
-   * @returns {Promise<{label: string, score: number, labels: Object<string, number>}>}
+   * @param {object} [options]
+   * @param {object} [options.headers]  Optional email headers for header-based classification.
+   * @returns {Promise<{label: string, score: number, labels: Object<string, number>, header_score?: number}>}
    */
-  async predict(text) {
+  async predict(text, options = {}) {
     const url = `${this.baseUrl}/predict`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
+
+    const body = { text };
+    if (options.headers) {
+      body.headers = options.headers;
+    }
 
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 

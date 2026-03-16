@@ -12,10 +12,13 @@ exports.register = function () {
   const timeout = main.timeout !== undefined ? Number(main.timeout) : 5000;
   const threshold = main.threshold !== undefined ? Number(main.threshold) : 0.5;
   const rejectSpam = main.reject_spam !== undefined ? main.reject_spam : true;
+  const sendHeaders =
+    main.send_headers !== undefined ? main.send_headers : false;
 
   this.client = new TobiraClient(url, { timeout });
   this.threshold = threshold;
   this.rejectSpam = rejectSpam;
+  this.sendHeaders = sendHeaders;
 
   this.register_hook("data_post", "check_spam");
 };
@@ -31,8 +34,13 @@ exports.check_spam = function (next, connection) {
     return next();
   }
 
+  const predictOpts = {};
+  if (this.sendHeaders) {
+    predictOpts.headers = extract_headers(transaction);
+  }
+
   this.client
-    .predict(bodyText)
+    .predict(bodyText, predictOpts)
     .then((result) => {
       transaction.results.add(this, {
         pass: result.label !== "spam" ? `score=${result.score}` : undefined,
@@ -84,4 +92,41 @@ function collect_text_parts(node, parts) {
       collect_text_parts(child, parts);
     }
   }
+}
+
+function extract_headers(transaction) {
+  const header = transaction.header;
+  if (!header) {
+    return {};
+  }
+
+  const hdrs = {};
+
+  const from = header.get("From");
+  if (from) hdrs.from = from.trim();
+
+  const replyTo = header.get("Reply-To");
+  if (replyTo) hdrs.reply_to = replyTo.trim();
+
+  const contentType = header.get("Content-Type");
+  if (contentType) hdrs.content_type = contentType.trim();
+
+  const authResults = header.get("Authentication-Results");
+  if (authResults) {
+    const spfMatch = authResults.match(/spf=(\w+)/);
+    if (spfMatch) hdrs.spf = spfMatch[1];
+
+    const dkimMatch = authResults.match(/dkim=(\w+)/);
+    if (dkimMatch) hdrs.dkim = dkimMatch[1];
+
+    const dmarcMatch = authResults.match(/dmarc=(\w+)/);
+    if (dmarcMatch) hdrs.dmarc = dmarcMatch[1];
+  }
+
+  const received = header.get_all("Received");
+  if (received && received.length > 0) {
+    hdrs.received = received.map((r) => r.trim());
+  }
+
+  return hdrs;
 }

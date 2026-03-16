@@ -36,6 +36,11 @@ sub set_config {
             default  => 5,
             type     => $Mail::SpamAssassin::Conf::CONF_TYPE_NUMERIC,
         },
+        {
+            setting  => 'tobira_send_headers',
+            default  => 0,
+            type     => $Mail::SpamAssassin::Conf::CONF_TYPE_BOOL,
+        },
     );
 
     $conf->{parser}->register_commands(\@cmds);
@@ -44,8 +49,9 @@ sub set_config {
 sub check_tobira {
     my ($self, $pms) = @_;
 
-    my $url     = $pms->{conf}->{tobira_url};
-    my $timeout = $pms->{conf}->{tobira_timeout};
+    my $url          = $pms->{conf}->{tobira_url};
+    my $timeout      = $pms->{conf}->{tobira_timeout};
+    my $send_headers = $pms->{conf}->{tobira_send_headers};
 
     my $body_ref = $pms->get_decoded_stripped_body_text_array();
     my $subject  = $pms->get("Subject:value") || "";
@@ -58,7 +64,12 @@ sub check_tobira {
         return 0;
     }
 
-    my ($label, $score) = $self->_call_api($url, $timeout, $text);
+    my $headers_ref = undef;
+    if ($send_headers) {
+        $headers_ref = $self->_extract_headers($pms);
+    }
+
+    my ($label, $score) = $self->_call_api($url, $timeout, $text, $headers_ref);
     unless (defined $score) {
         dbg("tobira: API call failed, inserting TOBIRA_FAIL");
         $pms->got_hit("TOBIRA_FAIL", "", score => 0);
@@ -81,8 +92,45 @@ sub check_tobira {
     return 0;
 }
 
+sub _extract_headers {
+    my ($self, $pms) = @_;
+
+    my %hdrs;
+
+    my $from = $pms->get("From:addr") || "";
+    $hdrs{from} = $from if $from;
+
+    my $reply_to = $pms->get("Reply-To:addr") || "";
+    $hdrs{reply_to} = $reply_to if $reply_to;
+
+    my $ct = $pms->get("Content-Type:raw") || "";
+    $hdrs{content_type} = $ct if $ct;
+
+    # Extract authentication results
+    my $auth_results = $pms->get("Authentication-Results:raw") || "";
+    if ($auth_results) {
+        if ($auth_results =~ /spf=(\w+)/) {
+            $hdrs{spf} = $1;
+        }
+        if ($auth_results =~ /dkim=(\w+)/) {
+            $hdrs{dkim} = $1;
+        }
+        if ($auth_results =~ /dmarc=(\w+)/) {
+            $hdrs{dmarc} = $1;
+        }
+    }
+
+    # Collect Received headers
+    my @received = split(/\n(?=\S)/, $pms->get("Received:raw") || "");
+    if (@received) {
+        $hdrs{received} = \@received;
+    }
+
+    return \%hdrs;
+}
+
 sub _call_api {
-    my ($self, $url, $timeout, $text) = @_;
+    my ($self, $url, $timeout, $text, $headers_ref) = @_;
 
     eval { require LWP::UserAgent; require HTTP::Request; require JSON; };
     if ($@) {
@@ -95,7 +143,11 @@ sub _call_api {
         agent   => "SpamAssassin-Tobira/$PLUGIN_VERSION",
     );
 
-    my $payload = JSON::encode_json({ text => $text });
+    my %body = (text => $text);
+    if ($headers_ref && %{$headers_ref}) {
+        $body{headers} = $headers_ref;
+    }
+    my $payload = JSON::encode_json(\%body);
 
     my $req = HTTP::Request->new('POST', $url);
     $req->header('Content-Type' => 'application/json');

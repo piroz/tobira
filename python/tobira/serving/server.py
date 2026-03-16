@@ -24,6 +24,7 @@ def create_app(
     backend: BackendProtocol,
     monitoring: Optional[dict[str, Any]] = None,
     feedback: Optional[dict[str, Any]] = None,
+    header_analysis: Optional[dict[str, Any]] = None,
     dashboard: Optional[dict[str, Any]] = None,
     ai_detection: Optional[dict[str, Any]] = None,
 ) -> Any:
@@ -37,6 +38,11 @@ def create_app(
         feedback: Optional feedback configuration dict.
             When ``{"enabled": true}`` is set, the ``POST /feedback``
             endpoint is registered. Accepts an optional ``store_path`` key.
+        header_analysis: Optional header analysis configuration dict.
+            When ``{"enabled": true}`` is set, header features are analyzed
+            and combined with text classification scores. Accepts optional
+            ``weight`` (float, 0.0-1.0) for blending ratio and ``weights``
+            (dict) for per-feature weights.
         dashboard: Optional dashboard configuration dict.
             When ``{"enabled": true}`` is set, the web dashboard is served
             at ``/dashboard`` with stats API endpoints.
@@ -71,6 +77,7 @@ def create_app(
         version=tobira.__version__,
     )
     app.state.backend = backend
+    app.state.header_analysis = header_analysis
 
     if monitoring and monitoring.get("enabled"):
         from tobira.monitoring.collector import PredictionCollector
@@ -114,6 +121,48 @@ def create_app(
     async def predict(req: PredictRequest) -> PredictResponse:
         result = app.state.backend.predict(req.text)
 
+        header_score: Optional[float] = None
+        final_score = result.score
+        final_labels = dict(result.labels)
+
+        ha_config = app.state.header_analysis
+        if req.headers is not None and ha_config and ha_config.get("enabled"):
+            from tobira.preprocessing.headers import analyze_headers
+
+            header_dict: dict[str, object] = {}
+            if req.headers.spf is not None:
+                header_dict["spf"] = req.headers.spf
+            if req.headers.dkim is not None:
+                header_dict["dkim"] = req.headers.dkim
+            if req.headers.dmarc is not None:
+                header_dict["dmarc"] = req.headers.dmarc
+            if req.headers.from_addr is not None:
+                header_dict["from"] = req.headers.from_addr
+            if req.headers.reply_to is not None:
+                header_dict["reply_to"] = req.headers.reply_to
+            if req.headers.received is not None:
+                header_dict["received"] = req.headers.received
+            if req.headers.content_type is not None:
+                header_dict["content_type"] = req.headers.content_type
+
+            feature_weights = ha_config.get("weights")
+            header_score = analyze_headers(header_dict, feature_weights)
+
+            blend_weight = ha_config.get("weight", 0.3)
+            text_weight = 1.0 - blend_weight
+            final_score = text_weight * result.score + blend_weight * header_score
+            # Adjust the spam label score proportionally
+            if "spam" in final_labels:
+                final_labels["spam"] = (
+                    text_weight * final_labels["spam"]
+                    + blend_weight * header_score
+                )
+            if "ham" in final_labels:
+                final_labels["ham"] = (
+                    text_weight * final_labels["ham"]
+                    + blend_weight * (1.0 - header_score)
+                )
+
         language = req.language
         if language is None:
             try:
@@ -124,6 +173,9 @@ def create_app(
             except (ImportError, ValueError):
                 pass
 
+        final_label = result.label
+        if final_labels:
+            final_label = max(final_labels, key=lambda k: final_labels[k])
         ai_generated = None
         if ai_detector is not None:
             ai_result = ai_detector.detect(req.text)
@@ -134,9 +186,10 @@ def create_app(
             )
 
         return PredictResponse(
-            label=result.label,
-            score=result.score,
-            labels=result.labels,
+            label=final_label,
+            score=final_score,
+            labels=final_labels,
+            header_score=header_score,
             language=language,
             ai_generated=ai_generated,
         )
@@ -164,6 +217,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     monitoring_config = config.get("monitoring")
 
     feedback_config = config.get("feedback")
+    header_analysis_config = config.get("header_analysis")
     dashboard_config = config.get("dashboard")
     ai_detection_config = config.get("ai_detection")
 
@@ -171,6 +225,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
         backend,
         monitoring=monitoring_config,
         feedback=feedback_config,
+        header_analysis=header_analysis_config,
         dashboard=dashboard_config,
         ai_detection=ai_detection_config,
     )

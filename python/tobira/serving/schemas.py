@@ -7,6 +7,54 @@ from pydantic import BaseModel, ConfigDict, Field
 MAX_TEXT_LENGTH = 102_400  # 100 KB
 
 
+class EmailHeaders(BaseModel):
+    """Email header fields for header-based classification."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "from": "sender@example.com",
+                    "reply_to": "different@example.com",
+                    "spf": "fail",
+                    "dkim": "none",
+                    "received": ["from mx1.example.com by mx2.example.com"],
+                },
+            ],
+        },
+    )
+
+    spf: str | None = Field(
+        default=None,
+        description="SPF verification result (pass, fail, softfail, none).",
+    )
+    dkim: str | None = Field(
+        default=None,
+        description="DKIM verification result (pass, fail, none).",
+    )
+    dmarc: str | None = Field(
+        default=None,
+        description="DMARC policy result (pass, fail, none).",
+    )
+    from_addr: str | None = Field(
+        default=None,
+        alias="from",
+        description="From header address.",
+    )
+    reply_to: str | None = Field(
+        default=None,
+        description="Reply-To header address.",
+    )
+    received: list[str] | None = Field(
+        default=None,
+        description="List of Received header values.",
+    )
+    content_type: str | None = Field(
+        default=None,
+        description="Content-Type header value.",
+    )
+
+
 class PredictRequest(BaseModel):
     """Request body for POST /predict."""
 
@@ -15,11 +63,26 @@ class PredictRequest(BaseModel):
             "examples": [
                 {"text": "Buy now! Limited offer!!!"},
                 {"text": "お買い得！今すぐ購入！", "language": "ja"},
+                {
+                    "text": "Buy now!",
+                    "headers": {
+                        "from": "sender@example.com",
+                        "reply_to": "different@example.com",
+                        "spf": "fail",
+                        "dkim": "none",
+                    },
+                },
             ],
         },
     )
 
     text: str = Field(..., max_length=MAX_TEXT_LENGTH)
+    headers: EmailHeaders | None = Field(
+        default=None,
+        description="Optional email headers for header-based classification. "
+        "When provided, header features are analyzed and combined "
+        "with the text classification score.",
+    )
     language: str | None = Field(
         default=None,
         description="ISO 639-1 language code (e.g. 'ja', 'en', 'ko'). "
@@ -83,6 +146,11 @@ class PredictResponse(BaseModel):
     label: str
     score: float
     labels: dict[str, float]
+    header_score: float | None = Field(
+        default=None,
+        description="Header-based spam risk score (0.0-1.0). "
+        "Only present when headers were provided in the request.",
+    )
     language: str | None = Field(
         default=None,
         description="Detected or specified language code.",
