@@ -63,6 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_ab_test(subparsers)
 
+    from tobira.cli.migrate_store import register as register_migrate_store
+
+    register_migrate_store(subparsers)
+
     return parser
 
 

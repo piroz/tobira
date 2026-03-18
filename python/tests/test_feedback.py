@@ -87,6 +87,47 @@ class TestFeedbackSchemas:
         assert resp.ham_reports == 3
 
 
+class TestFeedbackStoreClass:
+    """Tests for the StoreProtocol-backed FeedbackStore class."""
+
+    def test_save_and_load(self, tmp_path: Path) -> None:
+        from tobira.data.feedback_store import FeedbackStore
+        from tobira.monitoring.store import JsonlStore
+
+        store = JsonlStore(base_dir=str(tmp_path))
+        fs = FeedbackStore(store)
+
+        record = fs.save("test spam email", "spam", "rspamd")
+        assert record.label == "spam"
+        assert record.source == "rspamd"
+        assert record.id
+
+        loaded = fs.load_all()
+        assert len(loaded) == 1
+        assert loaded[0].id == record.id
+
+    def test_save_anonymises_pii(self, tmp_path: Path) -> None:
+        from tobira.data.feedback_store import FeedbackStore
+        from tobira.monitoring.store import JsonlStore
+
+        store = JsonlStore(base_dir=str(tmp_path))
+        fs = FeedbackStore(store)
+
+        record = fs.save("Contact user@example.com", "spam", "test")
+        assert "user@example.com" not in record.text
+        assert "<EMAIL>" in record.text
+
+    def test_custom_collection(self, tmp_path: Path) -> None:
+        from tobira.data.feedback_store import FeedbackStore
+        from tobira.monitoring.store import JsonlStore
+
+        store = JsonlStore(base_dir=str(tmp_path))
+        fs = FeedbackStore(store, collection="custom_feedback")
+
+        fs.save("text", "spam", "test")
+        assert (tmp_path / "custom_feedback.jsonl").exists()
+
+
 class TestFeedbackStore:
     def test_store_and_load(self, tmp_path: Path) -> None:
         path = tmp_path / "feedback.jsonl"

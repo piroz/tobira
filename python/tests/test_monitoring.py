@@ -1080,3 +1080,141 @@ class TestMonitorWatch:
             "monitor", str(log_file), "--phase", "B", "--format", "json",
         ])
         assert exit_code == 0
+
+
+# ── StoreProtocol / JsonlStore tests ──────────────────────────
+
+
+class TestJsonlStore:
+    def test_append_and_read(self, tmp_path: Path) -> None:
+        from tobira.monitoring.store import JsonlStore
+
+        store = JsonlStore(base_dir=str(tmp_path))
+        store.append("logs", {"label": "spam", "score": 0.9})
+        store.append("logs", {"label": "ham", "score": 0.1})
+
+        records = store.read_all("logs")
+        assert len(records) == 2
+        assert records[0]["label"] == "spam"
+        assert records[1]["label"] == "ham"
+
+    def test_read_empty_collection(self, tmp_path: Path) -> None:
+        from tobira.monitoring.store import JsonlStore
+
+        store = JsonlStore(base_dir=str(tmp_path))
+        records = store.read_all("nonexistent")
+        assert records == []
+
+    def test_collections_are_isolated(self, tmp_path: Path) -> None:
+        from tobira.monitoring.store import JsonlStore
+
+        store = JsonlStore(base_dir=str(tmp_path))
+        store.append("predictions", {"a": 1})
+        store.append("feedback", {"b": 2})
+
+        assert len(store.read_all("predictions")) == 1
+        assert len(store.read_all("feedback")) == 1
+
+    def test_implements_protocol(self, tmp_path: Path) -> None:
+        from tobira.monitoring.store import JsonlStore, StoreProtocol
+
+        store = JsonlStore(base_dir=str(tmp_path))
+        assert isinstance(store, StoreProtocol)
+
+
+class TestRedisRecordStore:
+    def _make_mock_redis(self) -> MagicMock:
+        mock_redis = MagicMock()
+        mock_redis.rpush = MagicMock()
+        mock_redis.lrange = MagicMock(return_value=[])
+        mock_redis.close = MagicMock()
+        return mock_redis
+
+    @patch("tobira.monitoring.store.RedisRecordStore.__init__", return_value=None)
+    def test_append(self, mock_init: MagicMock) -> None:
+        from tobira.monitoring.store import RedisRecordStore
+
+        store = RedisRecordStore.__new__(RedisRecordStore)
+        mock_client = self._make_mock_redis()
+        store._client = mock_client
+        store._key_prefix = "tobira"
+
+        store.append("logs", {"label": "spam"})
+
+        mock_client.rpush.assert_called_once()
+        call_args = mock_client.rpush.call_args
+        assert call_args[0][0] == "tobira:records:logs"
+        data = json.loads(call_args[0][1])
+        assert data["label"] == "spam"
+
+    @patch("tobira.monitoring.store.RedisRecordStore.__init__", return_value=None)
+    def test_read_all(self, mock_init: MagicMock) -> None:
+        from tobira.monitoring.store import RedisRecordStore
+
+        store = RedisRecordStore.__new__(RedisRecordStore)
+        mock_client = self._make_mock_redis()
+        mock_client.lrange.return_value = [
+            '{"label": "spam"}',
+            '{"label": "ham"}',
+        ]
+        store._client = mock_client
+        store._key_prefix = "tobira"
+
+        records = store.read_all("logs")
+
+        assert len(records) == 2
+        assert records[0]["label"] == "spam"
+        assert records[1]["label"] == "ham"
+        mock_client.lrange.assert_called_once_with("tobira:records:logs", 0, -1)
+
+
+class TestCreateStore:
+    def test_default_jsonl(self, tmp_path: Path) -> None:
+        from tobira.monitoring.store import JsonlStore, create_store
+
+        store = create_store({"type": "jsonl", "base_dir": str(tmp_path)})
+        assert isinstance(store, JsonlStore)
+
+    def test_jsonl_implicit(self, tmp_path: Path) -> None:
+        from tobira.monitoring.store import JsonlStore, create_store
+
+        store = create_store({"base_dir": str(tmp_path)})
+        assert isinstance(store, JsonlStore)
+
+    def test_unknown_type_raises(self) -> None:
+        from tobira.monitoring.store import create_store
+
+        with pytest.raises(ValueError, match="Unknown store type"):
+            create_store({"type": "unknown"})
+
+    @patch("tobira.monitoring.store.RedisRecordStore.__init__", return_value=None)
+    def test_redis_type(self, mock_init: MagicMock) -> None:
+        from tobira.monitoring.store import RedisRecordStore, create_store
+
+        store = create_store({
+            "type": "redis",
+            "redis_url": "redis://localhost:6379/0",
+        })
+        assert isinstance(store, RedisRecordStore)
+
+
+class TestStoreProtocolLazyImports:
+    def test_lazy_jsonl_store_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "JsonlStore")
+
+    def test_lazy_store_protocol_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "StoreProtocol")
+
+    def test_lazy_create_store_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "create_store")
+
+    def test_lazy_redis_record_store_import(self) -> None:
+        import tobira.monitoring
+
+        assert hasattr(tobira.monitoring, "RedisRecordStore")

@@ -3,26 +3,31 @@
 __all__ = [
     "DeploymentPhase",
     "EmailNotifier",
+    "JsonlStore",
     "NotificationConfig",
     "NotificationDispatcher",
     "PhaseAdvice",
     "PhaseTransitionConfig",
+    "PostgresStore",
     "PredictionCollector",
+    "RedisRecordStore",
+    "RedisScoreStore",
     "RetrainConfig",
     "RetrainEvent",
     "SlackNotifier",
+    "StoreProtocol",
     "TeamsNotifier",
     "analyze",
     "analyze_drift_from_redis",
     "append_record",
     "check_retrain_needed",
     "create_dispatcher",
+    "create_store",
     "detect_drift",
     "load_notification_config",
     "load_retrain_config",
     "notify_analysis_results",
     "read_records",
-    "RedisScoreStore",
     "trigger_retrain",
 ]
 
@@ -52,10 +57,11 @@ def __getattr__(name: str):  # type: ignore[no-untyped-def]
         from tobira.monitoring import store
 
         return getattr(store, name)
-    if name == "RedisScoreStore":
-        from tobira.monitoring.store import RedisScoreStore
+    if name in ("RedisScoreStore", "JsonlStore", "PostgresStore",
+                "RedisRecordStore", "StoreProtocol", "create_store"):
+        from tobira.monitoring import store
 
-        return RedisScoreStore
+        return getattr(store, name)
     if name in ("RetrainConfig", "RetrainEvent", "check_retrain_needed",
                 "load_retrain_config", "trigger_retrain"):
         from tobira.monitoring import retrain

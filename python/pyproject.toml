@@ -48,6 +48,10 @@ hub = [
 milter = [
     "pymilter>=1.0.4",
 ]
+postgres = [
+    "psycopg[binary]>=3.1",
+    "psycopg_pool>=3.1",
+]
 
 [project.scripts]
 tobira = "tobira.cli:main"
@@ -103,6 +107,10 @@ module = [
     "huggingface_hub.*",
     "Milter",
     "Milter.*",
+    "psycopg",
+    "psycopg.*",
+    "psycopg_pool",
+    "psycopg_pool.*",
 ]
 ignore_missing_imports = true
 
