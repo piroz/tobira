@@ -908,3 +908,215 @@ class TestEvaluateRun:
 
         result = main(["evaluate", str(csv_file), "--config", str(config_file)])
         assert result == 1
+
+
+# --- demo subcommand tests ---
+
+
+class TestDemoParser:
+    def test_parser_has_demo_subcommand(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["demo"])
+        assert args.command == "demo"
+
+    def test_parser_demo_defaults(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["demo"])
+        assert args.down is False
+        assert args.docker_dir is None
+        assert args.timeout == 60
+
+    def test_parser_demo_down_flag(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["demo", "--down"])
+        assert args.down is True
+
+    def test_parser_demo_custom_options(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "demo", "--docker-dir", "/tmp/docker", "--timeout", "30",
+        ])
+        assert args.docker_dir == "/tmp/docker"
+        assert args.timeout == 30
+
+    def test_demo_help_exits_with_0(self) -> None:
+        from tobira.cli import build_parser
+
+        parser = build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["demo", "--help"])
+        assert exc_info.value.code == 0
+
+
+class TestDemoDispatch:
+    @patch("tobira.cli.demo._run")
+    def test_demo_dispatches_to_run(self, mock_run: MagicMock) -> None:
+        from tobira.cli import main
+
+        mock_run.return_value = 0
+        result = main(["demo"])
+
+        assert result == 0
+        mock_run.assert_called_once()
+
+
+class TestDemoPrerequisites:
+    @patch("tobira.cli.demo.shutil.which", return_value=None)
+    def test_docker_not_found(self, mock_which: MagicMock) -> None:
+        from tobira.cli.demo import _check_prerequisites
+
+        ok, msg = _check_prerequisites()
+        assert ok is False
+        assert "docker command not found" in msg
+
+    @patch("tobira.cli.demo.subprocess.run")
+    @patch("tobira.cli.demo.shutil.which", return_value="/usr/bin/docker")
+    def test_docker_compose_available(
+        self, mock_which: MagicMock, mock_run: MagicMock
+    ) -> None:
+        from tobira.cli.demo import _check_prerequisites
+
+        mock_run.return_value = MagicMock(returncode=0)
+        ok, msg = _check_prerequisites()
+        assert ok is True
+        assert "available" in msg
+
+    @patch("tobira.cli.demo.subprocess.run")
+    @patch("tobira.cli.demo.shutil.which", return_value="/usr/bin/docker")
+    def test_docker_compose_not_available(
+        self, mock_which: MagicMock, mock_run: MagicMock
+    ) -> None:
+        from tobira.cli.demo import _check_prerequisites
+
+        mock_run.return_value = MagicMock(returncode=1)
+        ok, msg = _check_prerequisites()
+        assert ok is False
+        assert "docker compose not available" in msg
+
+
+class TestDemoFindDir:
+    def test_find_docker_dir_from_source_tree(self) -> None:
+        from tobira.cli.demo import _find_docker_compose_dir
+
+        result = _find_docker_compose_dir()
+        # In the source tree, docker/docker-compose.yml should exist
+        if result is not None:
+            assert (result / "docker-compose.yml").exists()
+
+
+class TestDemoRun:
+    def test_run_missing_docker_dir(self) -> None:
+        from tobira.cli import main
+
+        result = main(["demo", "--docker-dir", "/nonexistent/docker"])
+        assert result == 1
+
+    @patch("tobira.cli.demo._check_prerequisites", return_value=(False, "no docker"))
+    def test_run_no_docker(self, mock_prereq: MagicMock) -> None:
+        from tobira.cli import main
+
+        result = main(["demo", "--docker-dir", "/tmp"])
+        # Will fail at docker-compose.yml check before prerequisites
+        assert result == 1
+
+    @patch("tobira.cli.demo._compose_down", return_value=0)
+    @patch(
+        "tobira.cli.demo._check_prerequisites",
+        return_value=(True, "ok"),
+    )
+    @patch(
+        "tobira.cli.demo._find_docker_compose_dir",
+    )
+    def test_run_down(
+        self,
+        mock_find: MagicMock,
+        mock_prereq: MagicMock,
+        mock_down: MagicMock,
+        tmp_path: "os.PathLike[str]",
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        docker_dir = Path(str(tmp_path))
+        (docker_dir / "docker-compose.yml").write_text("", encoding="utf-8")
+
+        result = main(["demo", "--down", "--docker-dir", str(docker_dir)])
+        assert result == 0
+        mock_down.assert_called_once_with(docker_dir)
+
+    @patch("tobira.cli.demo._wait_for_health", return_value=True)
+    @patch("tobira.cli.demo._compose_up", return_value=0)
+    @patch(
+        "tobira.cli.demo._check_prerequisites",
+        return_value=(True, "ok"),
+    )
+    def test_run_up_success(
+        self,
+        mock_prereq: MagicMock,
+        mock_up: MagicMock,
+        mock_health: MagicMock,
+        tmp_path: "os.PathLike[str]",
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        docker_dir = Path(str(tmp_path))
+        (docker_dir / "docker-compose.yml").write_text("", encoding="utf-8")
+
+        result = main(["demo", "--docker-dir", str(docker_dir)])
+        assert result == 0
+        mock_up.assert_called_once()
+
+    @patch("tobira.cli.demo._compose_up", return_value=1)
+    @patch(
+        "tobira.cli.demo._check_prerequisites",
+        return_value=(True, "ok"),
+    )
+    def test_run_up_failure(
+        self,
+        mock_prereq: MagicMock,
+        mock_up: MagicMock,
+        tmp_path: "os.PathLike[str]",
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        docker_dir = Path(str(tmp_path))
+        (docker_dir / "docker-compose.yml").write_text("", encoding="utf-8")
+
+        result = main(["demo", "--docker-dir", str(docker_dir)])
+        assert result == 1
+
+    @patch("tobira.cli.demo._wait_for_health", return_value=False)
+    @patch("tobira.cli.demo._compose_up", return_value=0)
+    @patch(
+        "tobira.cli.demo._check_prerequisites",
+        return_value=(True, "ok"),
+    )
+    def test_run_health_timeout(
+        self,
+        mock_prereq: MagicMock,
+        mock_up: MagicMock,
+        mock_health: MagicMock,
+        tmp_path: "os.PathLike[str]",
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli import main
+
+        docker_dir = Path(str(tmp_path))
+        (docker_dir / "docker-compose.yml").write_text("", encoding="utf-8")
+
+        result = main(["demo", "--docker-dir", str(docker_dir)])
+        assert result == 1
