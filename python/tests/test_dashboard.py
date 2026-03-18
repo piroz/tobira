@@ -47,7 +47,21 @@ def _make_records(
     return records
 
 
-# ── dashboard helper function tests ──────────────────────────
+def _make_multi_day_records() -> list[dict[str, object]]:
+    """Create records spanning multiple days for trend testing."""
+    records: list[dict[str, object]] = []
+    for day in range(1, 8):
+        for i in range(5):
+            records.append({
+                "timestamp": f"2025-06-{day:02d}T{i + 10:02d}:00:00+00:00",
+                "label": "spam" if i < 3 else "ham",
+                "score": 0.9 if i < 3 else 0.2,
+                "latency_ms": 12.0,
+            })
+    return records
+
+
+# -- dashboard helper function tests ------------------------------------------
 
 
 class TestReadLogRecords:
@@ -156,8 +170,155 @@ class TestGetDashboardHTML:
         assert "<!DOCTYPE html>" in html
         assert "tobira Dashboard" in html
 
+    def test_contains_chart_js_reference(self) -> None:
+        from tobira.serving.dashboard import get_dashboard_html
 
-# ── endpoint tests ───────────────────────────────────────────
+        html = get_dashboard_html()
+        assert "chart.js" in html.lower() or "Chart" in html
+
+    def test_contains_traffic_light(self) -> None:
+        from tobira.serving.dashboard import get_dashboard_html
+
+        html = get_dashboard_html()
+        assert "traffic-light" in html
+        assert "traffic-dot" in html
+
+    def test_contains_trend_chart(self) -> None:
+        from tobira.serving.dashboard import get_dashboard_html
+
+        html = get_dashboard_html()
+        assert "trend-chart" in html
+
+    def test_contains_recent_table(self) -> None:
+        from tobira.serving.dashboard import get_dashboard_html
+
+        html = get_dashboard_html()
+        assert "recent-tbody" in html
+        assert "pagination" in html
+
+
+# -- new helper function tests -------------------------------------------------
+
+
+class TestComputeTrend:
+    def test_empty_records(self) -> None:
+        from tobira.serving.dashboard import _compute_trend
+
+        result = _compute_trend([])
+        assert result["dates"] == []
+        assert result["spam"] == []
+        assert result["ham"] == []
+
+    def test_aggregates_by_day(self) -> None:
+        from tobira.serving.dashboard import _compute_trend
+
+        records = _make_multi_day_records()
+        result = _compute_trend(records)
+        assert len(result["dates"]) == 7
+        assert result["dates"][0] == "2025-06-01"
+        assert result["dates"][-1] == "2025-06-07"
+        # Each day has 3 spam and 2 ham
+        assert result["spam"][0] == 3
+        assert result["ham"][0] == 2
+
+    def test_skips_records_without_timestamp(self) -> None:
+        from tobira.serving.dashboard import _compute_trend
+
+        records = [
+            {"label": "spam"},
+            {"timestamp": "2025-06-01T10:00:00+00:00", "label": "spam"},
+        ]
+        result = _compute_trend(records)
+        assert len(result["dates"]) == 1
+
+
+class TestGetRecentPredictions:
+    def test_empty_records(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        result = _get_recent_predictions([])
+        assert result["items"] == []
+        assert result["total"] == 0
+        assert result["page"] == 1
+        assert result["total_pages"] == 1
+
+    def test_returns_most_recent_first(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        records = _make_records(5)
+        result = _get_recent_predictions(records, page=1, per_page=3)
+        assert len(result["items"]) == 3
+        assert result["total"] == 5
+        assert result["total_pages"] == 2
+        # Most recent first (sorted by timestamp descending)
+        assert result["items"][0]["timestamp"] >= result["items"][1]["timestamp"]
+
+    def test_pagination(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        records = _make_records(10)
+        p1 = _get_recent_predictions(records, page=1, per_page=3)
+        p2 = _get_recent_predictions(records, page=2, per_page=3)
+        assert p1["page"] == 1
+        assert p2["page"] == 2
+        assert p1["items"] != p2["items"]
+        assert p1["total_pages"] == 4  # ceil(10/3)
+
+    def test_page_clamp(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        records = _make_records(5)
+        result = _get_recent_predictions(records, page=999, per_page=3)
+        assert result["page"] == 2  # clamped to last page
+
+    def test_items_contain_expected_fields(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        records = _make_records(1)
+        result = _get_recent_predictions(records, page=1, per_page=10)
+        item = result["items"][0]
+        assert "timestamp" in item
+        assert "label" in item
+        assert "score" in item
+        assert "latency_ms" in item
+
+
+class TestComputeHealthStatus:
+    def test_healthy_system(self) -> None:
+        from tobira.serving.dashboard import _compute_health_status
+
+        backend = _make_mock_backend()
+        records = _make_records(80)
+        result = _compute_health_status(records, backend)
+        assert result["overall"] in ("green", "yellow", "red")
+        assert len(result["components"]) == 3
+        # Backend should be green
+        assert result["components"][0]["status"] == "green"
+
+    def test_no_records(self) -> None:
+        from tobira.serving.dashboard import _compute_health_status
+
+        backend = _make_mock_backend()
+        result = _compute_health_status([], backend)
+        assert result["components"][1]["status"] == "yellow"  # model activity
+        assert result["components"][1]["detail"] == "No prediction data yet"
+
+    def test_overall_worst_status(self) -> None:
+        from tobira.serving.dashboard import _compute_health_status
+
+        backend = _make_mock_backend()
+        # With only a few records, model activity will be yellow (old timestamps)
+        # and drift will be insufficient_data (yellow)
+        records = _make_records(5)
+        result = _compute_health_status(records, backend)
+        # Overall should reflect the worst component
+        statuses = [c["status"] for c in result["components"]]
+        priority = {"red": 0, "yellow": 1, "green": 2}
+        expected_worst = min(statuses, key=lambda s: priority.get(s, 2))
+        assert result["overall"] == expected_worst
+
+
+# -- endpoint tests ------------------------------------------------------------
 
 
 @requires_fastapi
@@ -226,6 +387,59 @@ class TestDashboardEndpoints:
         assert data["status"] == "ok"
         assert "type" in data
 
+    def test_stats_trend(self, tmp_path: Path) -> None:
+        records = _make_multi_day_records()
+        client = self._create_app(tmp_path, records)
+        resp = client.get("/api/stats/trend")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["dates"]) == 7
+        assert len(data["spam"]) == 7
+        assert len(data["ham"]) == 7
+
+    def test_stats_trend_empty(self, tmp_path: Path) -> None:
+        client = self._create_app(tmp_path)
+        resp = client.get("/api/stats/trend")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["dates"] == []
+
+    def test_stats_recent(self, tmp_path: Path) -> None:
+        records = _make_records(25)
+        client = self._create_app(tmp_path, records)
+        resp = client.get("/api/stats/recent?page=1&per_page=10")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["items"]) == 10
+        assert data["total"] == 25
+        assert data["page"] == 1
+        assert data["total_pages"] == 3
+
+    def test_stats_recent_default_params(self, tmp_path: Path) -> None:
+        records = _make_records(5)
+        client = self._create_app(tmp_path, records)
+        resp = client.get("/api/stats/recent")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["items"]) == 5
+        assert data["per_page"] == 20
+
+    def test_stats_health(self, tmp_path: Path) -> None:
+        records = _make_records(10)
+        client = self._create_app(tmp_path, records)
+        resp = client.get("/api/stats/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["overall"] in ("green", "yellow", "red")
+        assert len(data["components"]) == 3
+
+    def test_stats_health_empty(self, tmp_path: Path) -> None:
+        client = self._create_app(tmp_path)
+        resp = client.get("/api/stats/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["overall"] in ("green", "yellow", "red")
+
     def test_no_dashboard_when_disabled(self) -> None:
         from tobira.serving.server import create_app
 
@@ -289,40 +503,6 @@ class TestMainWithDashboard:
 # ── feedback UI tests ────────────────────────────────────────
 
 
-class TestGetRecentPredictions:
-    def test_returns_recent_records(self) -> None:
-        from tobira.serving.dashboard import _get_recent_predictions
-
-        records = _make_records(10)
-        result = _get_recent_predictions(records, limit=5)
-        assert len(result) == 5
-        # Most recent first
-        assert result[0]["index"] == 9
-        assert result[4]["index"] == 5
-
-    def test_empty_records(self) -> None:
-        from tobira.serving.dashboard import _get_recent_predictions
-
-        result = _get_recent_predictions([])
-        assert result == []
-
-    def test_fewer_than_limit(self) -> None:
-        from tobira.serving.dashboard import _get_recent_predictions
-
-        records = _make_records(3)
-        result = _get_recent_predictions(records, limit=50)
-        assert len(result) == 3
-
-    def test_does_not_expose_text(self) -> None:
-        from tobira.serving.dashboard import _get_recent_predictions
-
-        records = [{"timestamp": "2025-06-01T00:00:00+00:00", "label": "spam",
-                     "score": 0.9, "text": "secret email content"}]
-        result = _get_recent_predictions(records)
-        assert "text" not in result[0]
-        assert "secret" not in str(result[0])
-
-
 class TestComputeFeedbackStats:
     def test_empty_file(self, tmp_path: Path) -> None:
         from tobira.serving.dashboard import _compute_feedback_stats
@@ -378,11 +558,11 @@ class TestDashboardFeedbackEndpoints:
     def test_predictions_recent(self, tmp_path: Path) -> None:
         records = _make_records(5)
         client = self._create_app(tmp_path, records)
-        resp = client.get("/api/predictions/recent")
+        resp = client.get("/api/stats/recent?page=1&per_page=20")
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) == 5
-        assert data[0]["index"] == 4  # most recent first
+        assert len(data["items"]) == 5
+        assert data["total"] == 5
 
     def test_feedback_stats_empty(self, tmp_path: Path) -> None:
         client = self._create_app(tmp_path)

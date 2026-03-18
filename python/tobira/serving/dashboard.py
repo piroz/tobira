@@ -2,13 +2,15 @@
 
 Provides API endpoints for statistics data and a self-contained HTML dashboard
 that visualizes spam detection metrics, score distributions, drift detection
-status, and backend health.
+status, and backend health.  The dashboard uses Chart.js for interactive charts
+and a traffic-light status indicator for at-a-glance system health.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -149,28 +151,6 @@ def _compute_drift(records: list[dict[str, Any]]) -> dict[str, Any]:
         return {"status": "error", "message": str(e), "psi": None, "ks": None}
 
 
-def _get_recent_predictions(
-    records: list[dict[str, Any]],
-    limit: int = 50,
-) -> list[dict[str, Any]]:
-    """Return the most recent prediction records for the feedback UI.
-
-    Only returns metadata (timestamp, label, score); never exposes raw text.
-    """
-    recent = records[-limit:] if len(records) > limit else list(records)
-    recent.reverse()
-    result: list[dict[str, Any]] = []
-    for idx, r in enumerate(recent):
-        result.append({
-            "index": len(records) - 1 - idx,
-            "timestamp": r.get("timestamp", ""),
-            "label": r.get("label", ""),
-            "score": r.get("score", 0.0),
-            "latency_ms": r.get("latency_ms"),
-        })
-    return result
-
-
 def _compute_feedback_stats(feedback_path: str) -> dict[str, Any]:
     """Compute feedback statistics from the feedback JSONL file."""
     p = Path(feedback_path)
@@ -204,6 +184,185 @@ def _get_backend_status(backend: Any) -> dict[str, Any]:
     return {
         "type": backend_type,
         "status": "ok",
+    }
+
+
+def _compute_trend(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute daily spam/ham trend for time-series charts.
+
+    Returns dates, spam counts, and ham counts sorted chronologically.
+    """
+    daily: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"spam": 0, "ham": 0, "other": 0}
+    )
+    for r in records:
+        ts = r.get("timestamp")
+        if not isinstance(ts, str):
+            continue
+        day = ts[:10]
+        label = r.get("label")
+        if label == "spam":
+            daily[day]["spam"] += 1
+        elif label == "ham":
+            daily[day]["ham"] += 1
+        else:
+            daily[day]["other"] += 1
+
+    sorted_days = sorted(daily.keys())
+    return {
+        "dates": sorted_days,
+        "spam": [daily[d]["spam"] for d in sorted_days],
+        "ham": [daily[d]["ham"] for d in sorted_days],
+        "other": [daily[d]["other"] for d in sorted_days],
+    }
+
+
+def _get_recent_predictions(
+    records: list[dict[str, Any]],
+    page: int = 1,
+    per_page: int = 20,
+) -> dict[str, Any]:
+    """Get paginated recent predictions, most recent first.
+
+    Args:
+        records: All prediction log records.
+        page: Page number (1-based).
+        per_page: Number of records per page.
+
+    Returns:
+        Dict with items, total count, page, per_page, and total_pages.
+    """
+    sorted_records = sorted(
+        records,
+        key=lambda r: r.get("timestamp", ""),
+        reverse=True,
+    )
+    total = len(sorted_records)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * per_page
+    end = start + per_page
+
+    items: list[dict[str, Any]] = []
+    for r in sorted_records[start:end]:
+        items.append({
+            "timestamp": r.get("timestamp", ""),
+            "label": r.get("label", ""),
+            "score": r.get("score"),
+            "latency_ms": r.get("latency_ms"),
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+    }
+
+
+def _compute_health_status(
+    records: list[dict[str, Any]],
+    backend: Any,
+) -> dict[str, Any]:
+    """Compute traffic-light health status for the system.
+
+    Checks API health (backend availability), model load state, and drift
+    detection status.  Each component is rated green/yellow/red.
+
+    The overall status is the worst of the individual statuses.
+
+    Returns:
+        Dict with overall status and per-component details.
+    """
+    components: list[dict[str, str]] = []
+
+    # API health (backend availability)
+    try:
+        backend_type = type(backend).__name__
+        components.append({
+            "name": "API / Backend",
+            "status": "green",
+            "detail": f"{backend_type} loaded",
+        })
+    except Exception:
+        components.append({
+            "name": "API / Backend",
+            "status": "red",
+            "detail": "Backend unavailable",
+        })
+
+    # Model load state (based on whether we have recent predictions)
+    now = datetime.now(timezone.utc)
+    recent_count = 0
+    for r in records:
+        ts = r.get("timestamp")
+        if not isinstance(ts, str):
+            continue
+        try:
+            dt = datetime.fromisoformat(ts)
+        except (ValueError, TypeError):
+            continue
+        if (now - dt).total_seconds() <= 3600:
+            recent_count += 1
+
+    if recent_count > 0:
+        components.append({
+            "name": "Model Activity",
+            "status": "green",
+            "detail": f"{recent_count} predictions in last hour",
+        })
+    elif len(records) > 0:
+        components.append({
+            "name": "Model Activity",
+            "status": "yellow",
+            "detail": "No predictions in last hour",
+        })
+    else:
+        components.append({
+            "name": "Model Activity",
+            "status": "yellow",
+            "detail": "No prediction data yet",
+        })
+
+    # Drift detection status
+    drift = _compute_drift(records)
+    drift_status = drift.get("status", "unknown")
+    if drift_status == "ok":
+        components.append({
+            "name": "Drift Detection",
+            "status": "green",
+            "detail": "No drift detected",
+        })
+    elif drift_status == "warning":
+        components.append({
+            "name": "Drift Detection",
+            "status": "yellow",
+            "detail": "Score distribution shift detected",
+        })
+    elif drift_status == "alert":
+        components.append({
+            "name": "Drift Detection",
+            "status": "red",
+            "detail": "Significant score distribution shift",
+        })
+    else:
+        components.append({
+            "name": "Drift Detection",
+            "status": "yellow",
+            "detail": drift.get("message", "Insufficient data"),
+        })
+
+    # Overall status: worst of all components
+    priority = {"red": 0, "yellow": 1, "green": 2}
+    overall = "green"
+    for c in components:
+        if priority.get(c["status"], 2) < priority.get(overall, 2):
+            overall = c["status"]
+
+    return {
+        "overall": overall,
+        "components": components,
     }
 
 
@@ -281,13 +440,34 @@ def register_dashboard_routes(
         return JSONResponse(content=_get_backend_status(backend))
 
     @app.get(
-        "/api/predictions/recent",
+        "/api/stats/trend",
         response_class=JSONResponse,
         tags=["dashboard"],
     )
-    async def predictions_recent() -> JSONResponse:
+    async def stats_trend() -> JSONResponse:
         records = _read_log_records(log_path)
-        return JSONResponse(content=_get_recent_predictions(records))
+        return JSONResponse(content=_compute_trend(records))
+
+    @app.get(
+        "/api/stats/recent",
+        response_class=JSONResponse,
+        tags=["dashboard"],
+    )
+    async def stats_recent(page: int = 1, per_page: int = 20) -> JSONResponse:
+        records = _read_log_records(log_path)
+        return JSONResponse(
+            content=_get_recent_predictions(records, page=page, per_page=per_page)
+        )
+
+    @app.get(
+        "/api/stats/health",
+        response_class=JSONResponse,
+        tags=["dashboard"],
+    )
+    async def stats_health() -> JSONResponse:
+        records = _read_log_records(log_path)
+        backend = app.state.backend
+        return JSONResponse(content=_compute_health_status(records, backend))
 
     if feedback_path is not None:
         from tobira.serving._feedback_routes import register_feedback_routes
@@ -326,7 +506,19 @@ _DASHBOARD_HTML = """\
     display: flex; align-items: center; justify-content: space-between;
   }
   header h1 { font-size: 1.4rem; font-weight: 600; }
+  header .header-right { display: flex; align-items: center; gap: 1rem; }
   header .refresh-info { font-size: 0.85rem; opacity: 0.7; }
+  .traffic-light {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    font-size: 0.85rem;
+  }
+  .traffic-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    display: inline-block; border: 2px solid rgba(255,255,255,0.3);
+  }
+  .traffic-dot.green { background: #28a745; }
+  .traffic-dot.yellow { background: #ffc107; }
+  .traffic-dot.red { background: #dc3545; }
   .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
   .grid {
     display: grid;
@@ -352,26 +544,13 @@ _DASHBOARD_HTML = """\
     display: inline-block; padding: 0.2rem 0.6rem;
     border-radius: 4px; font-size: 0.8rem; font-weight: 600;
   }
-  .badge-ok { background: #d4edda; color: #155724; }
-  .badge-warning { background: #fff3cd; color: #856404; }
-  .badge-alert { background: #f8d7da; color: #721c24; }
+  .badge-ok, .badge-green { background: #d4edda; color: #155724; }
+  .badge-warning, .badge-yellow { background: #fff3cd; color: #856404; }
+  .badge-alert, .badge-red { background: #f8d7da; color: #721c24; }
   .badge-info { background: #d1ecf1; color: #0c5460; }
   .chart-container {
-    width: 100%; height: 200px; position: relative;
+    width: 100%; height: 250px; position: relative;
     margin-top: 0.5rem;
-  }
-  .bar-chart {
-    display: flex; align-items: flex-end; height: 180px;
-    gap: 2px; padding-top: 10px;
-  }
-  .bar {
-    flex: 1; background: #4a90d9; border-radius: 2px 2px 0 0;
-    min-width: 4px; transition: height 0.3s;
-  }
-  .bar:hover { background: #2c6fbb; }
-  .chart-labels {
-    display: flex; justify-content: space-between;
-    font-size: 0.7rem; color: #888; margin-top: 4px;
   }
   .wide { grid-column: 1 / -1; }
   .error-msg { color: #dc3545; font-style: italic; }
@@ -389,16 +568,69 @@ _DASHBOARD_HTML = """\
   .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .fb-spam { color: #dc3545; border-color: #dc3545; }
   .fb-ham { color: #28a745; border-color: #28a745; }
+  .health-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+  .health-item {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem; border-radius: 6px; background: #f8f9fa;
+  }
+  .health-dot {
+    width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+  }
+  .health-dot.green { background: #28a745; }
+  .health-dot.yellow { background: #ffc107; }
+  .health-dot.red { background: #dc3545; }
+  .health-text { font-size: 0.85rem; }
+  .health-text .name { font-weight: 600; }
+  .health-text .detail { color: #666; }
+  table.log-table {
+    width: 100%; border-collapse: collapse; font-size: 0.85rem;
+  }
+  table.log-table th {
+    text-align: left; padding: 0.5rem; border-bottom: 2px solid #dee2e6;
+    color: #666; text-transform: uppercase; font-size: 0.75rem;
+    letter-spacing: 0.05em;
+  }
+  table.log-table td {
+    padding: 0.5rem; border-bottom: 1px solid #eee;
+  }
+  .pagination {
+    display: flex; justify-content: center; align-items: center;
+    gap: 0.5rem; margin-top: 1rem;
+  }
+  .pagination button {
+    padding: 0.3rem 0.8rem; border: 1px solid #dee2e6;
+    border-radius: 4px; background: #fff; cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .pagination button:hover { background: #e9ecef; }
+  .pagination button:disabled { opacity: 0.5; cursor: default; }
+  .pagination .page-info { font-size: 0.85rem; color: #666; }
 </style>
 </head>
 <body>
 <header>
   <h1>tobira Dashboard</h1>
-  <span class="refresh-info" id="refresh-info">Auto-refresh: 30s</span>
+  <div class="header-right">
+    <div class="traffic-light" id="header-traffic">
+      <span class="traffic-dot" id="header-dot"></span>
+      <span id="header-status-text">Loading...</span>
+    </div>
+    <span class="refresh-info" id="refresh-info">Auto-refresh: 30s</span>
+  </div>
 </header>
 <div class="container">
   <div id="loading">Loading dashboard data...</div>
   <div id="content" style="display:none;">
+
+    <div class="grid">
+      <div class="card wide">
+        <h2>System Health</h2>
+        <div class="health-grid" id="health-grid"></div>
+      </div>
+    </div>
 
     <div class="grid">
       <div class="card">
@@ -439,13 +671,18 @@ _DASHBOARD_HTML = """\
 
     <div class="grid">
       <div class="card wide">
+        <h2>Spam / Ham Trend</h2>
+        <div class="chart-container">
+          <canvas id="trend-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card wide">
         <h2>Score Distribution</h2>
         <div class="chart-container">
-          <div class="bar-chart" id="score-chart"></div>
-          <div class="chart-labels">
-            <span>0.0</span><span>0.25</span><span>0.5</span>
-            <span>0.75</span><span>1.0</span>
-          </div>
+          <canvas id="score-chart"></canvas>
         </div>
       </div>
     </div>
@@ -461,13 +698,32 @@ _DASHBOARD_HTML = """\
       </div>
     </div>
 
+    <div class="grid">
+      <div class="card wide">
+        <h2>Recent Predictions</h2>
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th><th>Label</th><th>Score</th><th>Latency (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="recent-tbody"></tbody>
+        </table>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+
     <!-- FEEDBACK_SECTION -->
 
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 (function() {
   var REFRESH_INTERVAL = 30000;
+  var currentPage = 1;
+  var trendChart = null;
+  var scoreChart = null;
 
   function fetchJSON(url) {
     return fetch(url).then(function(r) { return r.json(); });
@@ -475,10 +731,38 @@ _DASHBOARD_HTML = """\
 
   function badgeHTML(level, text) {
     var cls = "badge-info";
-    if (level === "ok") cls = "badge-ok";
-    else if (level === "warning") cls = "badge-warning";
-    else if (level === "alert") cls = "badge-alert";
+    if (level === "ok" || level === "green") cls = "badge-green";
+    else if (level === "warning" || level === "yellow") cls = "badge-yellow";
+    else if (level === "alert" || level === "red") cls = "badge-red";
     return '<span class="badge ' + cls + '">' + text + '</span>';
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return "-";
+    var d = document.createElement("div");
+    d.appendChild(document.createTextNode(String(s)));
+    return d.innerHTML;
+  }
+
+  function updateHealth(data) {
+    var dot = document.getElementById("header-dot");
+    var text = document.getElementById("header-status-text");
+    dot.className = "traffic-dot " + data.overall;
+    var labels = {green: "Healthy", yellow: "Warning", red: "Critical"};
+    text.textContent = labels[data.overall] || "Unknown";
+
+    var grid = document.getElementById("health-grid");
+    var html = "";
+    for (var i = 0; i < data.components.length; i++) {
+      var c = data.components[i];
+      html += '<div class="health-item">' +
+        '<span class="health-dot ' + c.status + '"></span>' +
+        '<div class="health-text">' +
+        '<div class="name">' + escapeHtml(c.name) + '</div>' +
+        '<div class="detail">' + escapeHtml(c.detail) + '</div>' +
+        '</div></div>';
+    }
+    grid.innerHTML = html;
   }
 
   function updateSummary(data) {
@@ -493,22 +777,80 @@ _DASHBOARD_HTML = """\
     document.getElementById("avg-latency").textContent = data.avg_latency_ms;
   }
 
+  function updateTrend(data) {
+    var ctx = document.getElementById("trend-chart");
+    if (!data.dates || data.dates.length === 0) return;
+    var cfg = {
+      type: "line",
+      data: {
+        labels: data.dates,
+        datasets: [
+          {
+            label: "Spam",
+            data: data.spam,
+            borderColor: "#dc3545",
+            backgroundColor: "rgba(220,53,69,0.1)",
+            fill: true, tension: 0.3
+          },
+          {
+            label: "Ham",
+            data: data.ham,
+            borderColor: "#28a745",
+            backgroundColor: "rgba(40,167,69,0.1)",
+            fill: true, tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: "top" } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true }
+        }
+      }
+    };
+    if (trendChart) {
+      trendChart.data = cfg.data;
+      trendChart.update();
+    } else {
+      trendChart = new Chart(ctx, cfg);
+    }
+  }
+
   function updateDistribution(data) {
-    var chart = document.getElementById("score-chart");
-    if (!data.counts || data.counts.length === 0) {
-      chart.innerHTML = '<span class="error-msg">No data available</span>';
-      return;
+    var ctx = document.getElementById("score-chart");
+    if (!data.counts || data.counts.length === 0) return;
+    var labels = data.bins.map(function(b) { return b.toFixed(2); });
+    var cfg = {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Count",
+          data: data.counts,
+          backgroundColor: "rgba(74,144,217,0.7)",
+          borderColor: "#4a90d9",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false },
+               title: { display: true, text: "Score" } },
+          y: { beginAtZero: true,
+               title: { display: true, text: "Count" } }
+        }
+      }
+    };
+    if (scoreChart) {
+      scoreChart.data = cfg.data;
+      scoreChart.update();
+    } else {
+      scoreChart = new Chart(ctx, cfg);
     }
-    var max = Math.max.apply(null, data.counts);
-    if (max === 0) max = 1;
-    var html = "";
-    for (var i = 0; i < data.counts.length; i++) {
-      var pct = (data.counts[i] / max) * 100;
-      html += '<div class="bar" style="height:' + pct +
-        '%" title="' + data.bins[i].toFixed(2) + ': ' +
-        data.counts[i] + '"></div>';
-    }
-    chart.innerHTML = html;
   }
 
   function updateDrift(data) {
@@ -547,17 +889,69 @@ _DASHBOARD_HTML = """\
     el.innerHTML = html;
   }
 
+  function updateRecent(data) {
+    var tbody = document.getElementById("recent-tbody");
+    var html = "";
+    for (var i = 0; i < data.items.length; i++) {
+      var item = data.items[i];
+      var scoreStr = item.score != null ? item.score.toFixed(4) : "-";
+      var latStr = item.latency_ms != null ? item.latency_ms.toFixed(1) : "-";
+      var labelBadge = "";
+      if (item.label === "spam") {
+        labelBadge = badgeHTML("alert", "spam");
+      } else if (item.label === "ham") {
+        labelBadge = badgeHTML("ok", "ham");
+      } else {
+        labelBadge = badgeHTML("info", escapeHtml(item.label) || "-");
+      }
+      html += "<tr><td>" + escapeHtml(item.timestamp) + "</td>" +
+        "<td>" + labelBadge + "</td>" +
+        "<td>" + scoreStr + "</td>" +
+        "<td>" + latStr + "</td></tr>";
+    }
+    tbody.innerHTML = html || '<tr><td colspan="4">No data</td></tr>';
+
+    var pag = document.getElementById("pagination");
+    pag.innerHTML =
+      '<button id="prev-btn">&laquo; Prev</button>' +
+      '<span class="page-info">Page ' + data.page +
+      ' / ' + data.total_pages + '</span>' +
+      '<button id="next-btn">Next &raquo;</button>';
+
+    document.getElementById("prev-btn").disabled = data.page <= 1;
+    document.getElementById("next-btn").disabled = data.page >= data.total_pages;
+    document.getElementById("prev-btn").onclick = function() {
+      currentPage = Math.max(1, data.page - 1);
+      refreshRecent();
+    };
+    document.getElementById("next-btn").onclick = function() {
+      currentPage = Math.min(data.total_pages, data.page + 1);
+      refreshRecent();
+    };
+  }
+
+  function refreshRecent() {
+    fetchJSON("/api/stats/recent?page=" + currentPage + "&per_page=20")
+      .then(updateRecent);
+  }
+
   function refresh() {
     Promise.all([
       fetchJSON("/api/stats/summary"),
       fetchJSON("/api/stats/distribution"),
       fetchJSON("/api/stats/drift"),
-      fetchJSON("/api/stats/backends")
+      fetchJSON("/api/stats/backends"),
+      fetchJSON("/api/stats/trend"),
+      fetchJSON("/api/stats/recent?page=" + currentPage + "&per_page=20"),
+      fetchJSON("/api/stats/health")
     ]).then(function(results) {
       updateSummary(results[0]);
       updateDistribution(results[1]);
       updateDrift(results[2]);
       updateBackends(results[3]);
+      updateTrend(results[4]);
+      updateRecent(results[5]);
+      updateHealth(results[6]);
       document.getElementById("loading").style.display = "none";
       document.getElementById("content").style.display = "block";
     }).catch(function(err) {
@@ -567,8 +961,21 @@ _DASHBOARD_HTML = """\
 
   // FEEDBACK_JS
 
-  refresh();
-  setInterval(refresh, REFRESH_INTERVAL);
+  if (typeof Chart === "undefined") {
+    var s = document.createElement("script");
+    s.onload = function() { refresh(); setInterval(refresh, REFRESH_INTERVAL); };
+    s.onerror = function() {
+      document.getElementById("loading").textContent =
+        "Failed to load Chart.js. Charts will not render.";
+      refresh();
+      setInterval(refresh, REFRESH_INTERVAL);
+    };
+    s.src = "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js";
+    document.head.appendChild(s);
+  } else {
+    refresh();
+    setInterval(refresh, REFRESH_INTERVAL);
+  }
 })();
 </script>
 </body>
