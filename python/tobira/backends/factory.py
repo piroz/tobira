@@ -2,9 +2,59 @@
 
 from __future__ import annotations
 
+import logging
+import sys
 from typing import Any
 
 from tobira.backends.protocol import BackendProtocol
+
+logger = logging.getLogger(__name__)
+
+_BUILTIN_BACKENDS = frozenset(
+    {"fasttext", "bert", "onnx", "ollama", "llm_api", "two_stage", "ensemble"}
+)
+
+ENTRY_POINT_GROUP = "tobira.backends"
+
+
+def _load_plugin_backends() -> dict[str, Any]:
+    """Discover backend plugins registered via entry_points."""
+    from importlib.metadata import entry_points
+
+    if sys.version_info >= (3, 10):
+        eps = entry_points(group=ENTRY_POINT_GROUP)
+    else:
+        # Python 3.9: entry_points() returns a dict
+        all_eps = entry_points()
+        eps = all_eps.get(ENTRY_POINT_GROUP, [])
+
+    plugins: dict[str, Any] = {}
+    for ep in eps:
+        if ep.name in _BUILTIN_BACKENDS:
+            logger.warning(
+                "Plugin %r provides backend %r which conflicts with a "
+                "built-in backend; the built-in will be used instead.",
+                ep.value,
+                ep.name,
+            )
+            continue
+        if ep.name in plugins:
+            logger.warning(
+                "Multiple plugins provide backend %r; using the first one found.",
+                ep.name,
+            )
+            continue
+        plugins[ep.name] = ep
+    return plugins
+
+
+def list_backends() -> list[str]:
+    """Return a sorted list of all available backend type names.
+
+    Includes both built-in backends and any discovered plugins.
+    """
+    plugins = _load_plugin_backends()
+    return sorted(_BUILTIN_BACKENDS | set(plugins.keys()))
 
 
 def create_backend(config: dict[str, Any]) -> BackendProtocol:
@@ -12,7 +62,8 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
 
     Args:
         config: Must contain a "type" key (e.g. "fasttext") and any
-            backend-specific options.
+            backend-specific options.  For plugin backends, all keys
+            except "type" are forwarded to the backend constructor.
 
     Returns:
         A backend instance implementing BackendProtocol.
@@ -114,5 +165,13 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
         if strategy is not None:
             ens_kwargs["strategy"] = strategy
         return EnsembleBackend(backends=child_backends, **ens_kwargs)
+
+    # Try plugin backends discovered via entry_points
+    plugins = _load_plugin_backends()
+    if backend_type in plugins:
+        ep = plugins[backend_type]
+        backend_class = ep.load()
+        plugin_config = {k: v for k, v in config.items() if k != "type"}
+        return backend_class(**plugin_config)  # type: ignore[no-any-return]
 
     raise ValueError(f"unknown backend type: {backend_type!r}")

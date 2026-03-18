@@ -1416,3 +1416,155 @@ class TestBackendsPublicAPI:
         assert EnsembleBackend is not None
         assert PredictionResult is not None
         assert create_backend is not None
+
+
+class _DummyBackend:
+    """Test backend for plugin discovery tests."""
+
+    def __init__(self, **kwargs: object) -> None:
+        self.kwargs = kwargs
+
+    def predict(self, text: str) -> PredictionResult:
+        return PredictionResult(
+            label="spam", score=0.99,
+            labels={"spam": 0.99, "ham": 0.01},
+        )
+
+
+def _make_mock_ep(
+    name: str, value: str = "pkg:Backend", cls: type = _DummyBackend,
+) -> MagicMock:
+    ep = MagicMock()
+    ep.name = name
+    ep.value = value
+    ep.load.return_value = cls
+    return ep
+
+
+class TestPluginBackendDiscovery:
+    """Tests for entry_points-based plugin backend discovery."""
+
+    def test_plugin_backend_creation(self) -> None:
+        """Plugin registered via entry_points is loaded."""
+        ep = _make_mock_ep("dummy", "dummy_pkg:DummyBackend")
+
+        with patch(
+            "tobira.backends.factory._load_plugin_backends",
+            return_value={"dummy": ep},
+        ):
+            backend = create_backend(
+                {"type": "dummy", "some_option": "value"},
+            )
+            assert isinstance(backend, _DummyBackend)
+            assert backend.kwargs == {"some_option": "value"}
+            result = backend.predict("test")
+            assert result.label == "spam"
+
+    def test_plugin_config_forwarded(self) -> None:
+        """Config keys except 'type' are forwarded."""
+
+        class CfgBackend:
+            def __init__(
+                self, model_path: str, threshold: float = 0.5,
+            ) -> None:
+                self.model_path = model_path
+                self.threshold = threshold
+
+            def predict(self, text: str) -> PredictionResult:
+                return PredictionResult(
+                    label="ham", score=0.1,
+                    labels={"spam": 0.1, "ham": 0.9},
+                )
+
+        ep = _make_mock_ep("cfg", "pkg:CfgBackend", CfgBackend)
+
+        with patch(
+            "tobira.backends.factory._load_plugin_backends",
+            return_value={"cfg": ep},
+        ):
+            backend = create_backend({
+                "type": "cfg",
+                "model_path": "/tmp/model.bin",
+                "threshold": 0.8,
+            })
+            assert isinstance(backend, CfgBackend)
+            assert backend.model_path == "/tmp/model.bin"
+            assert backend.threshold == 0.8
+
+    def test_builtin_takes_precedence(self) -> None:
+        """Plugin shadowing a built-in name is ignored."""
+        from tobira.backends.factory import (
+            _BUILTIN_BACKENDS,
+            _load_plugin_backends,
+        )
+
+        ep = _make_mock_ep("fasttext", "evil:Evil")
+
+        with patch(
+            "importlib.metadata.entry_points",
+            return_value=[ep],
+        ):
+            plugins = _load_plugin_backends()
+
+        assert "fasttext" not in plugins
+        assert "fasttext" in _BUILTIN_BACKENDS
+
+    def test_duplicate_plugin_warns(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Duplicate plugin name logs a warning."""
+        import logging
+
+        from tobira.backends.factory import _load_plugin_backends
+
+        ep1 = _make_mock_ep("custom", "pkg1:B1")
+        ep2 = _make_mock_ep("custom", "pkg2:B2")
+
+        with patch(
+            "importlib.metadata.entry_points",
+            return_value=[ep1, ep2],
+        ):
+            with caplog.at_level(
+                logging.WARNING,
+                logger="tobira.backends.factory",
+            ):
+                plugins = _load_plugin_backends()
+
+        assert "custom" in plugins
+        assert "Multiple plugins" in caplog.text
+
+    def test_unknown_type_still_raises(self) -> None:
+        """Unknown type with no matching plugin raises."""
+        with patch(
+            "tobira.backends.factory._load_plugin_backends",
+            return_value={},
+        ):
+            with pytest.raises(
+                ValueError, match="unknown backend type",
+            ):
+                create_backend({"type": "nonexistent"})
+
+    def test_list_backends_includes_builtins(self) -> None:
+        """list_backends returns all built-in names."""
+        from tobira.backends.factory import list_backends
+
+        backends = list_backends()
+        expected = [
+            "bert", "ensemble", "fasttext",
+            "llm_api", "onnx", "ollama", "two_stage",
+        ]
+        for name in expected:
+            assert name in backends
+
+    def test_list_backends_includes_plugins(self) -> None:
+        """list_backends includes discovered plugins."""
+        ep = _make_mock_ep("my_plugin", "pkg:MyPlugin")
+
+        with patch(
+            "tobira.backends.factory._load_plugin_backends",
+            return_value={"my_plugin": ep},
+        ):
+            from tobira.backends.factory import list_backends
+
+            backends = list_backends()
+            assert "my_plugin" in backends

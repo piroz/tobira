@@ -52,6 +52,12 @@ milter = [
 [project.scripts]
 tobira = "tobira.cli:main"
 
+[project.entry-points."tobira.backends"]
+# Built-in backends are registered directly in factory.py.
+# Third-party plugins can register here by adding to their own pyproject.toml:
+#   [project.entry-points."tobira.backends"]
+#   my_backend = "my_package.backend:MyBackendClass"
+
 [project.urls]
 Repository = "https://github.com/piroz/tobira"
 
