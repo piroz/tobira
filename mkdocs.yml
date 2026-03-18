@@ -1,0 +1,61 @@
+site_name: tobira
+site_description: ML-powered email spam detection toolkit with MTA integrations
+site_url: https://piroz.github.io/tobira
+repo_url: https://github.com/piroz/tobira
+repo_name: piroz/tobira
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - def_list
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quick Start: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+      - Backends: getting-started/backends.md
+  - MTA Tutorials:
+      - Overview: mta/index.md
+      - rspamd: mta/rspamd.md
+      - SpamAssassin: mta/spamassassin.md
+      - Haraka: mta/haraka.md
+      - Postfix milter: mta/postfix-milter.md
+  - CLI Reference: cli.md
+  - API Reference: api.md
+  - Deployment Guide: getting-started/phased-rollout.md
