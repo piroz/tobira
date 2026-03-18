@@ -26,7 +26,7 @@ jobs:
       - name: Generate SBOM
         run: uv run cyclonedx-py requirements <(uv pip freeze) --output-format json --outfile python-sbom.cdx.json
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-sbom
           path: python/python-sbom.cdx.json
@@ -58,7 +58,7 @@ jobs:
       - name: Generate SBOM
         run: npx --yes @cyclonedx/cyclonedx-npm --output-file ${{ matrix.package.name }}-sbom.cdx.json
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.package.name }}-sbom
           path: ${{ matrix.package.dir }}/${{ matrix.package.name }}-sbom.cdx.json
