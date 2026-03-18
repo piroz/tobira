@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0](https://github.com/piroz/tobira/compare/tobira-python-v0.2.0...tobira-python-v0.3.0) (2026-03-18)
+
+
+### Features
+
+* **backends:** add entry_points plugin architecture for custom backends ([#87](https://github.com/piroz/tobira/issues/87)) ([a262e77](https://github.com/piroz/tobira/commit/a262e771a1cc73c6087c6a381029273873297a46))
+* **cli:** add tobira demo command for Docker Compose demo environment ([#79](https://github.com/piroz/tobira/issues/79)) ([fda311f](https://github.com/piroz/tobira/commit/fda311f5e25f08e5d1f41904fe712a2d1afbaf42))
+* **cli:** add tobira train command ([#78](https://github.com/piroz/tobira/issues/78)) ([769e1bc](https://github.com/piroz/tobira/commit/769e1bcda0738dff675870e1c2d84a19cb48e5bf))
+* **core:** add fine-tuning pipeline (trainer.py) ([#77](https://github.com/piroz/tobira/issues/77)) ([fe0b566](https://github.com/piroz/tobira/commit/fe0b5660a7836b4d9fb7b177bfbac3ad07a1d449))
+* **deploy:** add high-availability support ([#91](https://github.com/piroz/tobira/issues/91)) ([d2c4ee0](https://github.com/piroz/tobira/commit/d2c4ee0b5238de444e131bfe2b6a9bbbfa163c80))
+* **evaluation:** add Active Learning module for uncertainty sampling ([#84](https://github.com/piroz/tobira/issues/84)) ([438113f](https://github.com/piroz/tobira/commit/438113ff953fa8c7198c3e62f8eca290a0c3023a))
+* **monitoring:** add notification integration (Slack / Teams / email) ([#86](https://github.com/piroz/tobira/issues/86)) ([6079cb3](https://github.com/piroz/tobira/commit/6079cb3a63a2382185ac2c6466e77af97c84f9b8))
+* **monitoring:** add pluggable store abstraction for external backends ([#85](https://github.com/piroz/tobira/issues/85)) ([46a54a1](https://github.com/piroz/tobira/commit/46a54a1123255c611a58de880236e0a8db5663c7))
+* **preprocessing:** add Japanese PII recognizer ([#76](https://github.com/piroz/tobira/issues/76)) ([8d8af90](https://github.com/piroz/tobira/commit/8d8af90f9ec6464be882812314bd51cc5fdba778))
+* **preprocessing:** add preprocessing pipeline integration ([#75](https://github.com/piroz/tobira/issues/75)) ([dab2847](https://github.com/piroz/tobira/commit/dab28474f302108ccc437128e49e6deebc81b449))
+* **serving:** A/B test support for model comparison ([#89](https://github.com/piroz/tobira/issues/89)) ([92e712a](https://github.com/piroz/tobira/commit/92e712afcf9cb0352e3d09799b00933f40affbe0))
+* **serving:** add API versioning with /v1/ prefix ([#92](https://github.com/piroz/tobira/issues/92)) ([f21d0b0](https://github.com/piroz/tobira/commit/f21d0b01dbc2d52207ea78b05e39e71d7670e4c8))
+* **serving:** add feedback UI to dashboard with one-click reporting ([#83](https://github.com/piroz/tobira/issues/83)) ([92ac971](https://github.com/piroz/tobira/commit/92ac9715cdee768380daea0495b2e1c4e87cb188))
+* **serving:** refresh dashboard UX with traffic-light status and Chart.js ([#82](https://github.com/piroz/tobira/issues/82)) ([6078b92](https://github.com/piroz/tobira/commit/6078b929744afe7a9558e2053cef5ef660ff6c09))
+
 ## [0.2.0](https://github.com/piroz/tobira/compare/tobira-python-v0.1.0...tobira-python-v0.2.0) (2026-03-16)
 
 
