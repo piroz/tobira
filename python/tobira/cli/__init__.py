@@ -59,6 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_train(subparsers)
 
+    from tobira.cli.ab_test_cmd import register as register_ab_test
+
+    register_ab_test(subparsers)
+
     return parser
 
 

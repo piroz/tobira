@@ -160,6 +160,11 @@ class PredictResponse(BaseModel):
         description="AI-generated text detection result. "
         "Present only when ai_detection is enabled in server config.",
     )
+    model_version: str | None = Field(
+        default=None,
+        description="A/B test variant name that served this prediction. "
+        "Present only when ab_test is enabled in server config.",
+    )
 
 
 class FeedbackRequest(BaseModel):
@@ -235,6 +240,47 @@ class FeedbackStatsResponse(BaseModel):
     total: int
     spam_reports: int
     ham_reports: int
+
+
+class ABTestVariantResult(BaseModel):
+    """Result summary for a single A/B test variant."""
+
+    predictions: int
+    avg_latency_ms: float
+    avg_score: float
+    label_counts: dict[str, int]
+    errors: int
+
+
+class ABTestResultsResponse(BaseModel):
+    """Response body for GET /api/ab-test/results."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "variants": {
+                        "control": {
+                            "predictions": 800,
+                            "avg_latency_ms": 12.5,
+                            "avg_score": 0.85,
+                            "label_counts": {"spam": 600, "ham": 200},
+                            "errors": 0,
+                        },
+                        "candidate": {
+                            "predictions": 200,
+                            "avg_latency_ms": 15.3,
+                            "avg_score": 0.87,
+                            "label_counts": {"spam": 155, "ham": 45},
+                            "errors": 1,
+                        },
+                    },
+                },
+            ],
+        },
+    )
+
+    variants: dict[str, ABTestVariantResult]
 
 
 class HealthResponse(BaseModel):

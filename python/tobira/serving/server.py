@@ -27,6 +27,7 @@ def create_app(
     header_analysis: Optional[dict[str, Any]] = None,
     dashboard: Optional[dict[str, Any]] = None,
     ai_detection: Optional[dict[str, Any]] = None,
+    ab_test: Optional[dict[str, Any]] = None,
 ) -> Any:
     """Create a FastAPI application with the given backend.
 
@@ -50,6 +51,10 @@ def create_app(
             When ``{"enabled": true}`` is set, each prediction response
             includes an ``ai_generated`` field. Accepts an optional
             ``threshold`` key (default 0.65).
+        ab_test: Optional A/B test configuration dict.
+            When ``{"enabled": true}`` is set, requests are routed across
+            configured variants. Accepts ``variants`` (list) and optional
+            ``strategy`` (``"random"`` or ``"hash"``).
 
     Returns:
         A FastAPI application.
@@ -88,6 +93,13 @@ def create_app(
     # Backend is already loaded at this point, so mark as ready.
     # During shutdown, GracefulShutdown sets this back to False.
     readiness.set_ready()
+
+    ab_router = None
+    if ab_test and ab_test.get("enabled"):
+        from tobira.serving.ab_test import create_ab_router
+
+        ab_router = create_ab_router(ab_test)
+    app.state.ab_router = ab_router
 
     if monitoring and monitoring.get("enabled"):
         from tobira.monitoring.collector import PredictionCollector
@@ -135,6 +147,11 @@ def create_app(
             app, log_path=log_path, feedback_path=dash_feedback_path,
         )
 
+    if ab_router is not None:
+        from tobira.serving.ab_test import register_ab_test_routes
+
+        register_ab_test_routes(app, ab_router)
+
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:
         if not readiness.ready:
@@ -142,7 +159,11 @@ def create_app(
                 status_code=503,
                 detail="Service not ready",
             )
-        result = app.state.backend.predict(req.text)
+        variant_name: Optional[str] = None
+        if app.state.ab_router is not None:
+            result, variant_name = app.state.ab_router.predict(req.text)
+        else:
+            result = app.state.backend.predict(req.text)
 
         header_score: Optional[float] = None
         final_score = result.score
@@ -215,6 +236,7 @@ def create_app(
             header_score=header_score,
             language=language,
             ai_generated=ai_generated,
+            model_version=variant_name,
         )
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
@@ -262,6 +284,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     header_analysis_config = config.get("header_analysis")
     dashboard_config = config.get("dashboard")
     ai_detection_config = config.get("ai_detection")
+    ab_test_config = config.get("ab_test")
 
     app = create_app(
         backend,
@@ -270,6 +293,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
         header_analysis=header_analysis_config,
         dashboard=dashboard_config,
         ai_detection=ai_detection_config,
+        ab_test=ab_test_config,
     )
 
     ha_config = config.get("ha", {})
