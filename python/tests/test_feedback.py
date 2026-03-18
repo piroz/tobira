@@ -12,7 +12,12 @@ from tobira.data.feedback_store import (
     load_feedback,
     store_feedback,
 )
-from tobira.serving.schemas import FeedbackRequest, FeedbackResponse
+from tobira.serving.schemas import (
+    DashboardFeedbackRequest,
+    FeedbackRequest,
+    FeedbackResponse,
+    FeedbackStatsResponse,
+)
 
 _has_fastapi = True
 try:
@@ -58,6 +63,28 @@ class TestFeedbackSchemas:
         resp = FeedbackResponse(status="accepted", id="abc-123")
         assert resp.status == "accepted"
         assert resp.id == "abc-123"
+
+    def test_dashboard_feedback_request_valid(self) -> None:
+        req = DashboardFeedbackRequest(
+            text="hello", correct_label="spam", source="dashboard",
+        )
+        assert req.text == "hello"
+        assert req.correct_label == "spam"
+        assert req.source == "dashboard"
+
+    def test_dashboard_feedback_request_default_source(self) -> None:
+        req = DashboardFeedbackRequest(text="hello", correct_label="ham")
+        assert req.source == "dashboard"
+
+    def test_dashboard_feedback_request_rejects_invalid_label(self) -> None:
+        with pytest.raises(Exception):
+            DashboardFeedbackRequest(text="hello", correct_label="invalid")
+
+    def test_feedback_stats_response(self) -> None:
+        resp = FeedbackStatsResponse(total=10, spam_reports=7, ham_reports=3)
+        assert resp.total == 10
+        assert resp.spam_reports == 7
+        assert resp.ham_reports == 3
 
 
 class TestFeedbackStore:

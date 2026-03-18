@@ -125,7 +125,15 @@ def create_app(
             log_path = monitoring["log_path"]
         if dashboard.get("log_path"):
             log_path = dashboard["log_path"]
-        register_dashboard_routes(app, log_path=log_path)
+
+        dash_feedback_path: Optional[str] = None
+        if feedback and feedback.get("enabled"):
+            from tobira.data.feedback_store import DEFAULT_FEEDBACK_PATH
+
+            dash_feedback_path = feedback.get("store_path", DEFAULT_FEEDBACK_PATH)
+        register_dashboard_routes(
+            app, log_path=log_path, feedback_path=dash_feedback_path,
+        )
 
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:

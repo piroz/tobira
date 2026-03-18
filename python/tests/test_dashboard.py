@@ -284,3 +284,163 @@ class TestMainWithDashboard:
             mock_create_app.assert_called_once()
             call_kwargs = mock_create_app.call_args
             assert call_kwargs[1]["dashboard"] == {"enabled": True}
+
+
+# ── feedback UI tests ────────────────────────────────────────
+
+
+class TestGetRecentPredictions:
+    def test_returns_recent_records(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        records = _make_records(10)
+        result = _get_recent_predictions(records, limit=5)
+        assert len(result) == 5
+        # Most recent first
+        assert result[0]["index"] == 9
+        assert result[4]["index"] == 5
+
+    def test_empty_records(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        result = _get_recent_predictions([])
+        assert result == []
+
+    def test_fewer_than_limit(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        records = _make_records(3)
+        result = _get_recent_predictions(records, limit=50)
+        assert len(result) == 3
+
+    def test_does_not_expose_text(self) -> None:
+        from tobira.serving.dashboard import _get_recent_predictions
+
+        records = [{"timestamp": "2025-06-01T00:00:00+00:00", "label": "spam",
+                     "score": 0.9, "text": "secret email content"}]
+        result = _get_recent_predictions(records)
+        assert "text" not in result[0]
+        assert "secret" not in str(result[0])
+
+
+class TestComputeFeedbackStats:
+    def test_empty_file(self, tmp_path: Path) -> None:
+        from tobira.serving.dashboard import _compute_feedback_stats
+
+        result = _compute_feedback_stats(str(tmp_path / "missing.jsonl"))
+        assert result == {"total": 0, "spam_reports": 0, "ham_reports": 0}
+
+    def test_counts_labels(self, tmp_path: Path) -> None:
+        from tobira.serving.dashboard import _compute_feedback_stats
+
+        fb_file = tmp_path / "feedback.jsonl"
+        lines = [
+            json.dumps({"label": "spam", "text": "a", "id": "1"}),
+            json.dumps({"label": "ham", "text": "b", "id": "2"}),
+            json.dumps({"label": "spam", "text": "c", "id": "3"}),
+        ]
+        fb_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        result = _compute_feedback_stats(str(fb_file))
+        assert result["total"] == 3
+        assert result["spam_reports"] == 2
+        assert result["ham_reports"] == 1
+
+
+@requires_fastapi
+class TestDashboardFeedbackEndpoints:
+    def _create_app(
+        self,
+        tmp_path: Path,
+        records: list[dict[str, object]] | None = None,
+        feedback_enabled: bool = True,
+    ) -> TestClient:
+        from tobira.serving.server import create_app
+
+        log_file = tmp_path / "predictions.jsonl"
+        if records:
+            _write_log(log_file, records)
+
+        feedback_path = str(tmp_path / "feedback.jsonl")
+        backend = _make_mock_backend()
+        feedback_cfg = (
+            {"enabled": True, "store_path": feedback_path}
+            if feedback_enabled
+            else None
+        )
+        app = create_app(
+            backend,
+            dashboard={"enabled": True, "log_path": str(log_file)},
+            feedback=feedback_cfg,
+        )
+        return TestClient(app)
+
+    def test_predictions_recent(self, tmp_path: Path) -> None:
+        records = _make_records(5)
+        client = self._create_app(tmp_path, records)
+        resp = client.get("/api/predictions/recent")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 5
+        assert data[0]["index"] == 4  # most recent first
+
+    def test_feedback_stats_empty(self, tmp_path: Path) -> None:
+        client = self._create_app(tmp_path)
+        resp = client.get("/api/feedback/stats")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+
+    def test_submit_feedback(self, tmp_path: Path) -> None:
+        client = self._create_app(tmp_path)
+        resp = client.post(
+            "/api/feedback",
+            json={"text": "spam text", "correct_label": "ham", "source": "dashboard"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "accepted"
+        assert "id" in data
+
+        # Stats should reflect the feedback
+        resp = client.get("/api/feedback/stats")
+        assert resp.json()["total"] == 1
+        assert resp.json()["ham_reports"] == 1
+
+    def test_submit_feedback_invalid_label(self, tmp_path: Path) -> None:
+        client = self._create_app(tmp_path)
+        resp = client.post(
+            "/api/feedback",
+            json={"text": "text", "correct_label": "invalid"},
+        )
+        assert resp.status_code == 422
+
+    def test_feedback_not_available_when_disabled(self, tmp_path: Path) -> None:
+        client = self._create_app(tmp_path, feedback_enabled=False)
+        resp = client.post(
+            "/api/feedback",
+            json={"text": "text", "correct_label": "spam"},
+        )
+        assert resp.status_code in (404, 405)
+
+    def test_feedback_stats_not_available_when_disabled(
+        self, tmp_path: Path,
+    ) -> None:
+        client = self._create_app(tmp_path, feedback_enabled=False)
+        resp = client.get("/api/feedback/stats")
+        assert resp.status_code == 404
+
+    def test_dashboard_html_includes_feedback_ui(self, tmp_path: Path) -> None:
+        client = self._create_app(tmp_path)
+        resp = client.get("/dashboard")
+        assert resp.status_code == 200
+        assert "Feedback Stats" in resp.text
+        assert "Recent Predictions" in resp.text
+
+    def test_dashboard_html_excludes_feedback_when_disabled(
+        self, tmp_path: Path,
+    ) -> None:
+        client = self._create_app(tmp_path, feedback_enabled=False)
+        resp = client.get("/dashboard")
+        assert resp.status_code == 200
+        assert "Feedback Stats" not in resp.text

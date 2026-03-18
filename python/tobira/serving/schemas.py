@@ -197,6 +197,46 @@ class FeedbackResponse(BaseModel):
     id: str
 
 
+class DashboardFeedbackRequest(BaseModel):
+    """Request body for POST /api/feedback (dashboard feedback)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "text": "Buy now! Limited offer!!!",
+                    "correct_label": "ham",
+                    "source": "dashboard",
+                },
+            ],
+        },
+    )
+
+    text: str = Field(..., max_length=MAX_TEXT_LENGTH)
+    correct_label: str = Field(..., pattern=r"^(spam|ham)$")
+    source: str = Field(default="dashboard", max_length=256)
+
+
+class FeedbackStatsResponse(BaseModel):
+    """Response body for GET /api/feedback/stats."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "total": 10,
+                    "spam_reports": 7,
+                    "ham_reports": 3,
+                },
+            ],
+        },
+    )
+
+    total: int
+    spam_reports: int
+    ham_reports: int
+
+
 class HealthResponse(BaseModel):
     """Response body for GET /health."""
 

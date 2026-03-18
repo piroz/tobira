@@ -149,6 +149,55 @@ def _compute_drift(records: list[dict[str, Any]]) -> dict[str, Any]:
         return {"status": "error", "message": str(e), "psi": None, "ks": None}
 
 
+def _get_recent_predictions(
+    records: list[dict[str, Any]],
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Return the most recent prediction records for the feedback UI.
+
+    Only returns metadata (timestamp, label, score); never exposes raw text.
+    """
+    recent = records[-limit:] if len(records) > limit else list(records)
+    recent.reverse()
+    result: list[dict[str, Any]] = []
+    for idx, r in enumerate(recent):
+        result.append({
+            "index": len(records) - 1 - idx,
+            "timestamp": r.get("timestamp", ""),
+            "label": r.get("label", ""),
+            "score": r.get("score", 0.0),
+            "latency_ms": r.get("latency_ms"),
+        })
+    return result
+
+
+def _compute_feedback_stats(feedback_path: str) -> dict[str, Any]:
+    """Compute feedback statistics from the feedback JSONL file."""
+    p = Path(feedback_path)
+    if not p.exists():
+        return {"total": 0, "spam_reports": 0, "ham_reports": 0}
+
+    total = 0
+    spam_reports = 0
+    ham_reports = 0
+    with open(p, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            total += 1
+            label = record.get("label", "")
+            if label == "spam":
+                spam_reports += 1
+            elif label == "ham":
+                ham_reports += 1
+    return {"total": total, "spam_reports": spam_reports, "ham_reports": ham_reports}
+
+
 def _get_backend_status(backend: Any) -> dict[str, Any]:
     """Get backend health and metadata."""
     backend_type = type(backend).__name__
@@ -158,27 +207,42 @@ def _get_backend_status(backend: Any) -> dict[str, Any]:
     }
 
 
-def get_dashboard_html() -> str:
-    """Return the self-contained HTML dashboard page."""
+def get_dashboard_html(*, feedback_enabled: bool = False) -> str:
+    """Return the self-contained HTML dashboard page.
+
+    Args:
+        feedback_enabled: When *True*, the feedback UI section is included.
+    """
+    if feedback_enabled:
+        return _DASHBOARD_HTML.replace(
+            "<!-- FEEDBACK_SECTION -->", _FEEDBACK_SECTION_HTML
+        ).replace(
+            "// FEEDBACK_JS", _FEEDBACK_JS
+        )
     return _DASHBOARD_HTML
 
 
 def register_dashboard_routes(
     app: Any,
     log_path: str = "/var/lib/tobira/predictions.jsonl",
+    feedback_path: str | None = None,
 ) -> None:
     """Register dashboard endpoints on a FastAPI app.
 
     Args:
         app: A FastAPI application instance.
         log_path: Path to the prediction log JSONL file.
+        feedback_path: Optional path to the feedback JSONL file.
+            When provided, feedback UI and endpoints are enabled.
     """
     _get_fastapi()
     from fastapi.responses import HTMLResponse, JSONResponse
 
     @app.get("/dashboard", response_class=HTMLResponse, tags=["dashboard"])
     async def dashboard() -> HTMLResponse:
-        return HTMLResponse(content=get_dashboard_html())
+        return HTMLResponse(
+            content=get_dashboard_html(feedback_enabled=feedback_path is not None),
+        )
 
     @app.get(
         "/api/stats/summary",
@@ -215,6 +279,20 @@ def register_dashboard_routes(
     async def stats_backends() -> JSONResponse:
         backend = app.state.backend
         return JSONResponse(content=_get_backend_status(backend))
+
+    @app.get(
+        "/api/predictions/recent",
+        response_class=JSONResponse,
+        tags=["dashboard"],
+    )
+    async def predictions_recent() -> JSONResponse:
+        records = _read_log_records(log_path)
+        return JSONResponse(content=_get_recent_predictions(records))
+
+    if feedback_path is not None:
+        from tobira.serving._feedback_routes import register_feedback_routes
+
+        register_feedback_routes(app, feedback_path)
 
 
 def _get_fastapi() -> Any:
@@ -298,6 +376,19 @@ _DASHBOARD_HTML = """\
   .wide { grid-column: 1 / -1; }
   .error-msg { color: #dc3545; font-style: italic; }
   #loading { text-align: center; padding: 2rem; color: #888; }
+  .pred-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .pred-table th, .pred-table td {
+    padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #eee;
+  }
+  .pred-table th { color: #666; font-weight: 600; }
+  .fb-btn {
+    padding: 0.25rem 0.6rem; border: 1px solid #ccc; border-radius: 4px;
+    background: #fff; cursor: pointer; font-size: 0.8rem;
+  }
+  .fb-btn:hover { background: #f0f0f0; }
+  .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .fb-spam { color: #dc3545; border-color: #dc3545; }
+  .fb-ham { color: #28a745; border-color: #28a745; }
 </style>
 </head>
 <body>
@@ -369,6 +460,8 @@ _DASHBOARD_HTML = """\
         <div id="backend-status">-</div>
       </div>
     </div>
+
+    <!-- FEEDBACK_SECTION -->
 
   </div>
 </div>
@@ -472,10 +565,114 @@ _DASHBOARD_HTML = """\
     });
   }
 
+  // FEEDBACK_JS
+
   refresh();
   setInterval(refresh, REFRESH_INTERVAL);
 })();
 </script>
 </body>
 </html>
+"""
+
+_FEEDBACK_SECTION_HTML = """\
+    <div class="grid">
+      <div class="card">
+        <h2>Feedback Stats</h2>
+        <div class="stat-row">
+          <span>Total Reports</span><span id="fb-total">-</span>
+        </div>
+        <div class="stat-row">
+          <span>Spam Reports</span><span id="fb-spam">-</span>
+        </div>
+        <div class="stat-row">
+          <span>Ham Reports</span><span id="fb-ham">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card wide">
+        <h2>Recent Predictions</h2>
+        <div id="predictions-table-wrap">
+          <table class="pred-table" id="predictions-table">
+            <thead>
+              <tr>
+                <th>Time</th><th>Label</th><th>Score</th>
+                <th>Latency</th><th>Feedback</th>
+              </tr>
+            </thead>
+            <tbody id="predictions-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+"""
+
+_FEEDBACK_JS = """\
+
+  function updateFeedbackStats(data) {
+    document.getElementById("fb-total").textContent = data.total;
+    document.getElementById("fb-spam").textContent = data.spam_reports;
+    document.getElementById("fb-ham").textContent = data.ham_reports;
+  }
+
+  function updatePredictions(data) {
+    var tbody = document.getElementById("predictions-body");
+    if (!data || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="error-msg">' +
+        'No predictions</td></tr>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < data.length; i++) {
+      var p = data[i];
+      var ts = p.timestamp ? new Date(p.timestamp).toLocaleString() : "-";
+      var lat = p.latency_ms != null ? p.latency_ms.toFixed(1) + " ms" : "-";
+      var spamBtn = '<button class="fb-btn fb-spam" data-idx="' + p.index +
+        '" onclick="sendFeedback(this, \'spam\')">Spam</button>';
+      var hamBtn = '<button class="fb-btn fb-ham" data-idx="' + p.index +
+        '" onclick="sendFeedback(this, \'ham\')">Not Spam</button>';
+      html += "<tr><td>" + ts + "</td><td>" + p.label + "</td><td>" +
+        (typeof p.score === "number" ? p.score.toFixed(4) : "-") +
+        "</td><td>" + lat + "</td><td>" + spamBtn + " " + hamBtn +
+        "</td></tr>";
+    }
+    tbody.innerHTML = html;
+  }
+
+  window.sendFeedback = function(btn, correctLabel) {
+    var idx = btn.getAttribute("data-idx");
+    var row = btn.closest("tr");
+    var cells = row.getElementsByTagName("td");
+    btn.disabled = true;
+    fetch("/api/feedback", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        text: "prediction-index:" + idx,
+        correct_label: correctLabel,
+        source: "dashboard"
+      })
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.status === "accepted") {
+        cells[4].innerHTML = '<span class="badge badge-ok">Reported: ' +
+          correctLabel + '</span>';
+        refreshFeedbackStats();
+      }
+    }).catch(function() {
+      btn.disabled = false;
+    });
+  };
+
+  function refreshFeedbackStats() {
+    fetchJSON("/api/feedback/stats").then(updateFeedbackStats).catch(function(){});
+  }
+
+  var origRefresh = refresh;
+  refresh = function() {
+    origRefresh();
+    fetchJSON("/api/predictions/recent").then(updatePredictions).catch(function(){});
+    refreshFeedbackStats();
+  };
 """
