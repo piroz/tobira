@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tobira-api
+  labels:
+    app: tobira
+    component: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: tobira
+      component: api

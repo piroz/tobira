@@ -71,3 +71,22 @@ async def predict(req: PredictRequest) -> PredictResponse:
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(status="ok")
+
+
+class ReadinessResponse(BaseModel):
+    ready: bool
+    reason: str | None = None
+
+
+class LivenessResponse(BaseModel):
+    alive: bool
+
+
+@app.get("/health/ready", response_model=ReadinessResponse)
+async def health_ready() -> ReadinessResponse:
+    return ReadinessResponse(ready=True)
+
+
+@app.get("/health/live", response_model=LivenessResponse)
+async def health_live() -> LivenessResponse:
+    return LivenessResponse(alive=True)

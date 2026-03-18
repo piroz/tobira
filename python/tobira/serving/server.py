@@ -57,11 +57,14 @@ def create_app(
     fastapi, _ = _import_deps()
 
     import tobira
+    from tobira.serving.ha import ReadinessState
     from tobira.serving.schemas import (
         AIGeneratedInfo,
         HealthResponse,
+        LivenessResponse,
         PredictRequest,
         PredictResponse,
+        ReadinessResponse,
     )
 
     ai_detector = None
@@ -71,6 +74,8 @@ def create_app(
         threshold = ai_detection.get("threshold", 0.65)
         ai_detector = AIGeneratedDetector(threshold=threshold)
 
+    readiness = ReadinessState()
+
     app = fastapi.FastAPI(
         title="tobira",
         description="Spam prediction API powered by tobira.",
@@ -78,6 +83,11 @@ def create_app(
     )
     app.state.backend = backend
     app.state.header_analysis = header_analysis
+    app.state.readiness = readiness
+
+    # Backend is already loaded at this point, so mark as ready.
+    # During shutdown, GracefulShutdown sets this back to False.
+    readiness.set_ready()
 
     if monitoring and monitoring.get("enabled"):
         from tobira.monitoring.collector import PredictionCollector
@@ -119,6 +129,11 @@ def create_app(
 
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:
+        if not readiness.ready:
+            raise fastapi.HTTPException(
+                status_code=503,
+                detail="Service not ready",
+            )
         result = app.state.backend.predict(req.text)
 
         header_score: Optional[float] = None
@@ -198,11 +213,30 @@ def create_app(
     async def health() -> HealthResponse:
         return HealthResponse(status="ok")
 
+    @app.get("/health/ready", response_model=ReadinessResponse, tags=["health"])
+    async def health_ready() -> ReadinessResponse:
+        if readiness.ready:
+            return ReadinessResponse(ready=True)
+        reason = (
+            "shutting down"
+            if getattr(app.state, "_shutting_down", False)
+            else "model loading"
+        )
+        return ReadinessResponse(ready=False, reason=reason)
+
+    @app.get("/health/live", response_model=LivenessResponse, tags=["health"])
+    async def health_live() -> LivenessResponse:
+        return LivenessResponse(alive=True)
+
     return app
 
 
 def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     """Start the server from a TOML config file.
+
+    Supports graceful shutdown: on SIGTERM/SIGINT, the readiness probe
+    returns ``False`` so that load balancers stop routing new traffic,
+    then the server drains in-flight requests before exiting.
 
     Args:
         config_path: Path to the TOML configuration file.
@@ -229,4 +263,16 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
         dashboard=dashboard_config,
         ai_detection=ai_detection_config,
     )
+
+    ha_config = config.get("ha", {})
+    drain_seconds = ha_config.get("drain_seconds", 5.0)
+
+    from tobira.serving.ha import GracefulShutdown
+
+    shutdown = GracefulShutdown(
+        readiness=app.state.readiness,
+        drain_seconds=drain_seconds,
+    )
+    shutdown.install()
+
     uvicorn.run(app, host=host, port=port, access_log=False)

@@ -207,3 +207,34 @@ class HealthResponse(BaseModel):
     )
 
     status: str
+
+
+class ReadinessResponse(BaseModel):
+    """Response body for GET /health/ready (readiness probe)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"ready": True},
+                {"ready": False, "reason": "model loading"},
+            ],
+        },
+    )
+
+    ready: bool
+    reason: str | None = Field(
+        default=None,
+        description="Reason when not ready (e.g. 'model loading', 'shutting down').",
+    )
+
+
+class LivenessResponse(BaseModel):
+    """Response body for GET /health/live (liveness probe)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [{"alive": True}],
+        },
+    )
+
+    alive: bool

@@ -1,0 +1,60 @@
+# High-availability Docker Compose configuration for tobira.
+#
+# Runs multiple API server instances behind an nginx reverse proxy
+# with health-check based routing and automatic restart on failure.
+#
+# Usage:
+#   docker compose -f docker-compose.ha.yml up --build -d
+#   curl http://localhost:8000/health
+#   curl http://localhost:8000/health/ready
+#   docker compose -f docker-compose.ha.yml down
+
+services:
+  tobira-api-1:
+    build:
+      context: api/
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  tobira-api-2:
+    build:
+      context: api/
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  nginx:
+    image: nginx:1-alpine
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./nginx/nginx-ha.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      tobira-api-1:
+        condition: service_healthy
+      tobira-api-2:
+        condition: service_healthy
+    restart: unless-stopped
