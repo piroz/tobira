@@ -324,3 +324,91 @@ class LivenessResponse(BaseModel):
     )
 
     alive: bool
+
+
+class ActiveLearningSampleResponse(BaseModel):
+    """A single Active Learning candidate sample."""
+
+    id: str
+    text: str
+    score: float
+    labels: dict[str, float]
+    uncertainty: float
+    strategy: str
+    timestamp: str
+    labeled: bool
+    assigned_label: str | None = None
+
+
+class ActiveLearningQueueResponse(BaseModel):
+    """Response body for GET /active-learning/queue."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "samples": [
+                        {
+                            "id": "abc-123",
+                            "text": "Check this offer...",
+                            "score": 0.55,
+                            "labels": {"spam": 0.55, "ham": 0.45},
+                            "uncertainty": 0.99,
+                            "strategy": "entropy",
+                            "timestamp": "2025-01-01T00:00:00+00:00",
+                            "labeled": False,
+                            "assigned_label": None,
+                        },
+                    ],
+                    "total": 1,
+                    "pending": 1,
+                    "labeled": 0,
+                },
+            ],
+        },
+    )
+
+    samples: list[ActiveLearningSampleResponse]
+    total: int
+    pending: int
+    labeled: int
+
+
+class ActiveLearningLabelRequest(BaseModel):
+    """Request body for POST /active-learning/label."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"sample_id": "abc-123", "label": "spam"},
+            ],
+        },
+    )
+
+    sample_id: str
+    label: str = Field(..., pattern=r"^(spam|ham)$")
+
+
+class ActiveLearningLabelResponse(BaseModel):
+    """Response body for POST /active-learning/label."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"status": "labeled", "sample_id": "abc-123", "label": "spam"},
+            ],
+        },
+    )
+
+    status: str
+    sample_id: str
+    label: str
+
+
+class ActiveLearningStatsResponse(BaseModel):
+    """Response body for GET /active-learning/stats."""
+
+    total: int
+    pending: int
+    labeled: int
+    label_counts: dict[str, int]

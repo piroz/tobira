@@ -28,6 +28,7 @@ def create_app(
     dashboard: Optional[dict[str, Any]] = None,
     ai_detection: Optional[dict[str, Any]] = None,
     ab_test: Optional[dict[str, Any]] = None,
+    active_learning: Optional[dict[str, Any]] = None,
 ) -> Any:
     """Create a FastAPI application with the given backend.
 
@@ -55,6 +56,12 @@ def create_app(
             When ``{"enabled": true}`` is set, requests are routed across
             configured variants. Accepts ``variants`` (list) and optional
             ``strategy`` (``"random"`` or ``"hash"``).
+        active_learning: Optional Active Learning configuration dict.
+            When ``{"enabled": true}`` is set, Active Learning endpoints
+            (``/active-learning/queue``, ``/active-learning/label``,
+            ``/active-learning/stats``) are registered. Accepts optional
+            ``strategy``, ``uncertainty_threshold``, ``max_queue_size``,
+            and ``queue_path`` keys.
 
     Returns:
         A FastAPI application.
@@ -151,6 +158,86 @@ def create_app(
         from tobira.serving.ab_test import register_ab_test_routes
 
         register_ab_test_routes(app, ab_router)
+
+    if active_learning and active_learning.get("enabled"):
+        from tobira.evaluation.active_learning import UncertaintySampler
+        from tobira.serving.schemas import (
+            ActiveLearningLabelRequest,
+            ActiveLearningLabelResponse,
+            ActiveLearningQueueResponse,
+            ActiveLearningSampleResponse,
+            ActiveLearningStatsResponse,
+        )
+
+        sampler = UncertaintySampler(
+            strategy=active_learning.get("strategy", "entropy"),
+            uncertainty_threshold=active_learning.get(
+                "uncertainty_threshold", 0.3
+            ),
+            max_queue_size=active_learning.get("max_queue_size", 1000),
+            queue_path=active_learning.get(
+                "queue_path", "/var/lib/tobira/active_learning_queue.jsonl"
+            ),
+        )
+        app.state.active_learning_sampler = sampler
+
+        @app.get(
+            "/active-learning/queue",
+            response_model=ActiveLearningQueueResponse,
+            tags=["active-learning"],
+        )
+        async def al_queue() -> ActiveLearningQueueResponse:
+            pending = sampler.get_pending()
+            stats = sampler.queue_stats()
+            return ActiveLearningQueueResponse(
+                samples=[
+                    ActiveLearningSampleResponse(
+                        id=s.id,
+                        text=s.text,
+                        score=s.score,
+                        labels=s.labels,
+                        uncertainty=s.uncertainty,
+                        strategy=s.strategy,
+                        timestamp=s.timestamp,
+                        labeled=s.labeled,
+                        assigned_label=s.assigned_label,
+                    )
+                    for s in pending
+                ],
+                total=stats["total"],
+                pending=stats["pending"],
+                labeled=stats["labeled"],
+            )
+
+        @app.post(
+            "/active-learning/label",
+            response_model=ActiveLearningLabelResponse,
+            tags=["active-learning"],
+        )
+        async def al_label(
+            req: ActiveLearningLabelRequest,
+        ) -> ActiveLearningLabelResponse:
+            updated = sampler.label_sample(req.sample_id, req.label)
+            if updated is None:
+                fastapi, _ = _import_deps()
+                raise fastapi.HTTPException(
+                    status_code=404,
+                    detail=f"Sample {req.sample_id} not found",
+                )
+            return ActiveLearningLabelResponse(
+                status="labeled",
+                sample_id=req.sample_id,
+                label=req.label,
+            )
+
+        @app.get(
+            "/active-learning/stats",
+            response_model=ActiveLearningStatsResponse,
+            tags=["active-learning"],
+        )
+        async def al_stats() -> ActiveLearningStatsResponse:
+            stats = sampler.queue_stats()
+            return ActiveLearningStatsResponse(**stats)
 
     @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
     async def predict(req: PredictRequest) -> PredictResponse:
@@ -285,6 +372,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     dashboard_config = config.get("dashboard")
     ai_detection_config = config.get("ai_detection")
     ab_test_config = config.get("ab_test")
+    active_learning_config = config.get("active_learning")
 
     app = create_app(
         backend,
@@ -294,6 +382,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
         dashboard=dashboard_config,
         ai_detection=ai_detection_config,
         ab_test=ab_test_config,
+        active_learning=active_learning_config,
     )
 
     ha_config = config.get("ha", {})
