@@ -1,0 +1,16 @@
+apiVersion: v2
+name: tobira
+description: A Helm chart for deploying the tobira spam prediction API server
+type: application
+version: 0.1.0
+appVersion: "0.2.0"
+keywords:
+  - spam
+  - email
+  - machine-learning
+  - fastapi
+home: https://github.com/piroz/tobira
+sources:
+  - https://github.com/piroz/tobira
+maintainers:
+  - name: piroz

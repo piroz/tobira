@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tobira
+  namespace: tobira
+  labels:
+    app.kubernetes.io/name: tobira
+data:
+  tobira.toml: |
+    [backend]
+    backend = "fasttext"
+    model_path = "/models/fasttext-spam.bin"

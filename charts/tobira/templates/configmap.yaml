@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tobira.fullname" . }}
+  labels:
+    {{- include "tobira.labels" . | nindent 4 }}
+data:
+  tobira.toml: |
+    [backend]
+    backend = {{ .Values.backend.type | quote }}
+    model_path = {{ .Values.backend.modelPath | quote }}
+    {{- range $key, $value := .Values.backend.config }}
+    {{ $key }} = {{ $value | toJson }}
+    {{- end }}
+    {{- range $key, $value := .Values.configOverrides }}
+    [{{ $key }}]
+    {{- range $k, $v := $value }}
+    {{ $k }} = {{ $v | toJson }}
+    {{- end }}
+    {{- end }}
