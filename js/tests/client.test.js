@@ -33,7 +33,7 @@ describe("TobiraClient", () => {
   });
 
   describe("predict", () => {
-    it("should POST to /predict and return result", async () => {
+    it("should POST to /v1/predict and return result", async () => {
       const expected = { label: "ham", score: 0.95, labels: { ham: 0.95, spam: 0.05 } };
       globalThis.fetch = mock.fn(async () => ({
         ok: true,
@@ -46,7 +46,7 @@ describe("TobiraClient", () => {
       assert.deepEqual(result, expected);
 
       const call = globalThis.fetch.mock.calls[0];
-      assert.equal(call.arguments[0], "http://localhost:8000/predict");
+      assert.equal(call.arguments[0], "http://localhost:8000/v1/predict");
       const opts = call.arguments[1];
       assert.equal(opts.method, "POST");
       assert.equal(opts.headers["Content-Type"], "application/json");
@@ -97,7 +97,7 @@ describe("TobiraClient", () => {
   });
 
   describe("feedback", () => {
-    it("should POST to /feedback and return result", async () => {
+    it("should POST to /v1/feedback and return result", async () => {
       const expected = { status: "accepted", id: "abc-123" };
       globalThis.fetch = mock.fn(async () => ({
         ok: true,
@@ -110,7 +110,7 @@ describe("TobiraClient", () => {
       assert.deepEqual(result, expected);
 
       const call = globalThis.fetch.mock.calls[0];
-      assert.equal(call.arguments[0], "http://localhost:8000/feedback");
+      assert.equal(call.arguments[0], "http://localhost:8000/v1/feedback");
       const opts = call.arguments[1];
       assert.equal(opts.method, "POST");
       assert.equal(opts.headers["Content-Type"], "application/json");
@@ -165,7 +165,7 @@ describe("TobiraClient", () => {
   });
 
   describe("health", () => {
-    it("should GET /health and return result", async () => {
+    it("should GET /v1/health and return result", async () => {
       const expected = { status: "ok" };
       globalThis.fetch = mock.fn(async () => ({
         ok: true,
@@ -178,7 +178,7 @@ describe("TobiraClient", () => {
       assert.deepEqual(result, expected);
 
       const call = globalThis.fetch.mock.calls[0];
-      assert.equal(call.arguments[0], "http://localhost:8000/health");
+      assert.equal(call.arguments[0], "http://localhost:8000/v1/health");
     });
 
     it("should throw on non-ok response", async () => {

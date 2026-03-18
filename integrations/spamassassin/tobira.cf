@@ -5,7 +5,7 @@
 loadplugin Mail::SpamAssassin::Plugin::Tobira Tobira.pm
 
 # --- Plugin settings ---
-# tobira_url      http://127.0.0.1:8000/predict
+# tobira_url      http://127.0.0.1:8000/v1/predict
 # tobira_timeout  5
 
 # --- Evaluation rule (triggers API call once) ---

@@ -28,7 +28,7 @@ sub set_config {
     my @cmds = (
         {
             setting  => 'tobira_url',
-            default  => 'http://127.0.0.1:8000/predict',
+            default  => 'http://127.0.0.1:8000/v1/predict',
             type     => $Mail::SpamAssassin::Conf::CONF_TYPE_STRING,
         },
         {

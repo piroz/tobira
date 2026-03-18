@@ -229,7 +229,7 @@ local function configure(cfg)
   end
 
   config = lua_util.override_defaults(default_config, opts)
-  predict_url = config.api_url .. "/predict"
+  predict_url = config.api_url .. "/v1/predict"
   return true
 end
 

@@ -108,7 +108,27 @@ def _make_mock_backend() -> MagicMock:
 
 @requires_fastapi
 class TestPredict:
-    def test_predict(self) -> None:
+    def test_predict_v1(self) -> None:
+        from tobira.serving.server import create_app
+
+        backend = _make_mock_backend()
+        app = create_app(backend)
+        client = TestClient(app)
+
+        resp = client.post("/v1/predict", json={"text": "buy now!!!"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["label"] == "spam"
+        assert data["score"] == pytest.approx(0.95)
+        assert data["labels"] == {
+            "spam": pytest.approx(0.95),
+            "ham": pytest.approx(0.05),
+        }
+        backend.predict.assert_called_once_with("buy now!!!")
+
+    def test_predict_legacy(self) -> None:
+        """Legacy /predict still works for backward compatibility."""
         from tobira.serving.server import create_app
 
         backend = _make_mock_backend()
@@ -121,11 +141,6 @@ class TestPredict:
         data = resp.json()
         assert data["label"] == "spam"
         assert data["score"] == pytest.approx(0.95)
-        assert data["labels"] == {
-            "spam": pytest.approx(0.95),
-            "ham": pytest.approx(0.05),
-        }
-        backend.predict.assert_called_once_with("buy now!!!")
 
     def test_predict_with_language(self) -> None:
         from tobira.serving.server import create_app
@@ -134,7 +149,7 @@ class TestPredict:
         app = create_app(backend)
         client = TestClient(app)
 
-        resp = client.post("/predict", json={"text": "hello", "language": "en"})
+        resp = client.post("/v1/predict", json={"text": "hello", "language": "en"})
 
         assert resp.status_code == 200
         data = resp.json()
@@ -148,7 +163,7 @@ class TestPredict:
         client = TestClient(app)
 
         resp = client.post(
-            "/predict",
+            "/v1/predict",
             json={"text": "This is a reasonably long English sentence for detection"},
         )
 
@@ -163,7 +178,7 @@ class TestPredict:
         app = create_app(_make_mock_backend())
         client = TestClient(app)
 
-        resp = client.post("/predict", json={})
+        resp = client.post("/v1/predict", json={})
         assert resp.status_code == 422
 
     def test_predict_text_too_long(self) -> None:
@@ -173,7 +188,7 @@ class TestPredict:
         client = TestClient(app)
 
         long_text = "a" * (MAX_TEXT_LENGTH + 1)
-        resp = client.post("/predict", json={"text": long_text})
+        resp = client.post("/v1/predict", json={"text": long_text})
         assert resp.status_code == 422
 
     def test_predict_with_headers_no_analysis(self) -> None:
@@ -184,7 +199,7 @@ class TestPredict:
         app = create_app(backend)
         client = TestClient(app)
 
-        resp = client.post("/predict", json={
+        resp = client.post("/v1/predict", json={
             "text": "buy now!!!",
             "headers": {"spf": "fail", "dkim": "fail"},
         })
@@ -205,7 +220,7 @@ class TestPredict:
         )
         client = TestClient(app)
 
-        resp = client.post("/predict", json={
+        resp = client.post("/v1/predict", json={
             "text": "buy now!!!",
             "headers": {"spf": "fail", "dkim": "fail", "dmarc": "fail"},
         })
@@ -228,7 +243,7 @@ class TestPredict:
         )
         client = TestClient(app)
 
-        resp = client.post("/predict", json={
+        resp = client.post("/v1/predict", json={
             "text": "buy now!!!",
             "headers": {"spf": "pass", "dkim": "pass", "dmarc": "pass"},
         })
@@ -250,7 +265,7 @@ class TestPredict:
         )
         client = TestClient(app)
 
-        resp = client.post("/predict", json={"text": "buy now!!!"})
+        resp = client.post("/v1/predict", json={"text": "buy now!!!"})
 
         assert resp.status_code == 200
         data = resp.json()
@@ -260,7 +275,19 @@ class TestPredict:
 
 @requires_fastapi
 class TestHealth:
-    def test_health(self) -> None:
+    def test_health_v1(self) -> None:
+        from tobira.serving.server import create_app
+
+        app = create_app(_make_mock_backend())
+        client = TestClient(app)
+
+        resp = client.get("/v1/health")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    def test_health_legacy(self) -> None:
+        """Legacy /health still works for backward compatibility."""
         from tobira.serving.server import create_app
 
         app = create_app(_make_mock_backend())

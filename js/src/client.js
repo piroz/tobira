@@ -21,7 +21,7 @@ class TobiraClient {
   }
 
   /**
-   * Call POST /predict.
+   * Call POST /v1/predict.
    *
    * @param {string} text  The text to classify.
    * @param {object} [options]
@@ -29,7 +29,7 @@ class TobiraClient {
    * @returns {Promise<{label: string, score: number, labels: Object<string, number>, header_score?: number}>}
    */
   async predict(text, options = {}) {
-    const url = `${this.baseUrl}/predict`;
+    const url = `${this.baseUrl}/v1/predict`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
 
@@ -57,7 +57,7 @@ class TobiraClient {
   }
 
   /**
-   * Call POST /feedback.
+   * Call POST /v1/feedback.
    *
    * @param {string} text   The email text to report.
    * @param {string} label  "spam" or "ham".
@@ -65,7 +65,7 @@ class TobiraClient {
    * @returns {Promise<{status: string, id: string}>}
    */
   async feedback(text, label, source = "unknown") {
-    const url = `${this.baseUrl}/feedback`;
+    const url = `${this.baseUrl}/v1/feedback`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
 
@@ -88,12 +88,12 @@ class TobiraClient {
   }
 
   /**
-   * Call GET /health.
+   * Call GET /v1/health.
    *
    * @returns {Promise<{status: string}>}
    */
   async health() {
-    const url = `${this.baseUrl}/health`;
+    const url = `${this.baseUrl}/v1/health`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
 

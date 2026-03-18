@@ -123,13 +123,18 @@ def create_app(
             redis_window_seconds=redis_window,
         )
 
+    # --- Versioned router (v1) ---
+    v1_router = fastapi.APIRouter(prefix="/v1", tags=["v1"])
+
     if feedback and feedback.get("enabled"):
         from tobira.data.feedback_store import DEFAULT_FEEDBACK_PATH, store_feedback
         from tobira.serving.schemas import FeedbackRequest, FeedbackResponse
 
         feedback_path = feedback.get("store_path", DEFAULT_FEEDBACK_PATH)
 
-        @app.post("/feedback", response_model=FeedbackResponse, tags=["feedback"])
+        @v1_router.post(
+            "/feedback", response_model=FeedbackResponse, tags=["feedback"]
+        )
         async def receive_feedback(req: FeedbackRequest) -> FeedbackResponse:
             record = store_feedback(
                 req.text, req.label, req.source, path=feedback_path
@@ -239,7 +244,9 @@ def create_app(
             stats = sampler.queue_stats()
             return ActiveLearningStatsResponse(**stats)
 
-    @app.post("/predict", response_model=PredictResponse, tags=["prediction"])
+    @v1_router.post(
+        "/predict", response_model=PredictResponse, tags=["prediction"]
+    )
     async def predict(req: PredictRequest) -> PredictResponse:
         if not readiness.ready:
             raise fastapi.HTTPException(
@@ -326,11 +333,13 @@ def create_app(
             model_version=variant_name,
         )
 
-    @app.get("/health", response_model=HealthResponse, tags=["health"])
+    @v1_router.get("/health", response_model=HealthResponse, tags=["health"])
     async def health() -> HealthResponse:
         return HealthResponse(status="ok")
 
-    @app.get("/health/ready", response_model=ReadinessResponse, tags=["health"])
+    @v1_router.get(
+        "/health/ready", response_model=ReadinessResponse, tags=["health"]
+    )
     async def health_ready() -> ReadinessResponse:
         if readiness.ready:
             return ReadinessResponse(ready=True)
@@ -341,9 +350,29 @@ def create_app(
         )
         return ReadinessResponse(ready=False, reason=reason)
 
-    @app.get("/health/live", response_model=LivenessResponse, tags=["health"])
+    @v1_router.get(
+        "/health/live", response_model=LivenessResponse, tags=["health"]
+    )
     async def health_live() -> LivenessResponse:
         return LivenessResponse(alive=True)
+
+    app.include_router(v1_router)
+
+    # --- Legacy unversioned routes (aliases to v1 for backward compatibility) ---
+    app.post("/predict", response_model=PredictResponse, tags=["prediction"])(
+        predict
+    )
+    app.get("/health", response_model=HealthResponse, tags=["health"])(health)
+    app.get("/health/ready", response_model=ReadinessResponse, tags=["health"])(
+        health_ready
+    )
+    app.get("/health/live", response_model=LivenessResponse, tags=["health"])(
+        health_live
+    )
+    if feedback and feedback.get("enabled"):
+        app.post("/feedback", response_model=FeedbackResponse, tags=["feedback"])(
+            receive_feedback
+        )
 
     return app
 
