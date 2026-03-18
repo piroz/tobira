@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/piroz/tobira/compare/tobira-js-v0.2.0...tobira-js-v0.3.0) (2026-03-18)
+
+
+### Features
+
+* **serving:** add API versioning with /v1/ prefix ([#92](https://github.com/piroz/tobira/issues/92)) ([f21d0b0](https://github.com/piroz/tobira/commit/f21d0b01dbc2d52207ea78b05e39e71d7670e4c8))
+
 ## [0.2.0](https://github.com/piroz/tobira/compare/tobira-js-v0.1.0...tobira-js-v0.2.0) (2026-03-16)
 
 
