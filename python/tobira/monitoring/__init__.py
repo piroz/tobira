@@ -2,17 +2,25 @@
 
 __all__ = [
     "DeploymentPhase",
+    "EmailNotifier",
+    "NotificationConfig",
+    "NotificationDispatcher",
     "PhaseAdvice",
     "PhaseTransitionConfig",
     "PredictionCollector",
     "RetrainConfig",
     "RetrainEvent",
+    "SlackNotifier",
+    "TeamsNotifier",
     "analyze",
     "analyze_drift_from_redis",
     "append_record",
     "check_retrain_needed",
+    "create_dispatcher",
     "detect_drift",
+    "load_notification_config",
     "load_retrain_config",
+    "notify_analysis_results",
     "read_records",
     "RedisScoreStore",
     "trigger_retrain",
@@ -53,4 +61,25 @@ def __getattr__(name: str):  # type: ignore[no-untyped-def]
         from tobira.monitoring import retrain
 
         return getattr(retrain, name)
+    if name in ("NotificationConfig", "NotificationDispatcher",
+                "create_dispatcher", "load_notification_config"):
+        from tobira.monitoring import notifier
+
+        return getattr(notifier, name)
+    if name == "SlackNotifier":
+        from tobira.monitoring.slack import SlackNotifier
+
+        return SlackNotifier
+    if name == "TeamsNotifier":
+        from tobira.monitoring.teams import TeamsNotifier
+
+        return TeamsNotifier
+    if name == "EmailNotifier":
+        from tobira.monitoring.email_notifier import EmailNotifier
+
+        return EmailNotifier
+    if name == "notify_analysis_results":
+        from tobira.monitoring.analyzer import notify_analysis_results
+
+        return notify_analysis_results
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -657,3 +657,54 @@ def analyze_drift_from_redis(
         return None
 
     return detect_drift(baseline, current, psi_threshold=psi_threshold)
+
+
+def notify_analysis_results(
+    report: AnalysisReport,
+    dispatcher: object,
+) -> list[bool]:
+    """Send notifications for noteworthy findings in an analysis report.
+
+    Sends notifications for drift alerts, threshold suggestions, and phase
+    transition readiness.  Only fires when ``report.warnings`` contains
+    alert-level messages or when the phase transition is ready.
+
+    Args:
+        report: The analysis report to inspect.
+        dispatcher: A :class:`~tobira.monitoring.notifier.NotificationDispatcher`.
+
+    Returns:
+        Aggregated list of send results across all notifications fired.
+    """
+    from tobira.monitoring.notifier import NotificationDispatcher
+
+    if not isinstance(dispatcher, NotificationDispatcher):
+        return []
+
+    results: list[bool] = []
+
+    # Drift alerts
+    if report.psi is not None and report.psi.level == "alert":
+        results.extend(dispatcher.notify(
+            "Score distribution drift detected",
+            f"PSI={report.psi.psi:.4f} — significant shift in prediction "
+            f"score distribution. Investigate model performance.",
+            severity="critical",
+        ))
+    elif report.psi is not None and report.psi.level == "warning":
+        results.extend(dispatcher.notify(
+            "Score distribution shift warning",
+            f"PSI={report.psi.psi:.4f} — moderate shift detected in "
+            f"prediction scores. Monitor closely.",
+            severity="warning",
+        ))
+
+    # Phase transition readiness
+    if report.phase_advice is not None and report.phase_advice.ready:
+        results.extend(dispatcher.notify(
+            "Phase transition recommended",
+            report.phase_advice.recommendation,
+            severity="info",
+        ))
+
+    return results
