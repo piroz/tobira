@@ -1,0 +1,123 @@
+name: Security Audit
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync
+      - name: Install pip-audit
+        run: uv pip install pip-audit
+      - name: Run pip-audit
+        run: uv run pip-audit --requirement <(uv pip freeze) --format json --output audit-report.json || true
+      - name: Check for high/critical vulnerabilities
+        run: |
+          if [ -f audit-report.json ]; then
+            HIGH_COUNT=$(python3 -c "
+          import json, sys
+          with open('audit-report.json') as f:
+              data = json.load(f)
+          vulns = data.get('dependencies', [])
+          high = sum(1 for d in vulns for v in d.get('vulns', [])
+                     if v.get('fix_versions'))
+          print(high)
+          ")
+            echo "Vulnerabilities with available fixes: $HIGH_COUNT"
+            if [ "$HIGH_COUNT" -gt 0 ]; then
+              echo "::warning::Found $HIGH_COUNT vulnerability(ies) with available fixes"
+            fi
+          fi
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-audit-report
+          path: python/audit-report.json
+          retention-days: 30
+
+  js-audit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - { dir: js, name: js-sdk }
+          - { dir: integrations/haraka, name: haraka-plugin }
+    defaults:
+      run:
+        working-directory: ${{ matrix.package.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.package.dir }}/package-lock.json
+      - run: npm ci
+      - name: Run npm audit
+        run: npm audit --json > audit-report.json || true
+      - name: Check for high/critical vulnerabilities
+        run: |
+          HIGH_COUNT=$(node -e "
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('audit-report.json', 'utf8'));
+          const meta = data.metadata?.vulnerabilities || {};
+          const count = (meta.high || 0) + (meta.critical || 0);
+          console.log(count);
+          ")
+          echo "High/Critical vulnerabilities: $HIGH_COUNT"
+          if [ "$HIGH_COUNT" -gt 0 ]; then
+            echo "::warning::Found $HIGH_COUNT high/critical vulnerability(ies) in ${{ matrix.package.name }}"
+          fi
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.package.name }}-audit-report
+          path: ${{ matrix.package.dir }}/audit-report.json
+          retention-days: 30
+
+  docker-scan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: docker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker compose build tobira-api
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "docker-tobira-api:latest"
+          format: "json"
+          output: "trivy-report.json"
+          severity: "HIGH,CRITICAL"
+      - name: Upload Trivy report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-trivy-report
+          path: trivy-report.json
+          retention-days: 30

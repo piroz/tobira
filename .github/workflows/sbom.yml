@@ -1,0 +1,70 @@
+name: SBOM Generation
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  python-sbom:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Install CycloneDX
+        run: uv pip install cyclonedx-bom
+      - name: Generate SBOM
+        run: uv run cyclonedx-py requirements <(uv pip freeze) --output-format json --outfile python-sbom.cdx.json
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sbom
+          path: python/python-sbom.cdx.json
+          retention-days: 90
+      - name: Attach SBOM to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" python-sbom.cdx.json --repo "${{ github.repository }}"
+
+  js-sbom:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - { dir: js, name: js-sdk }
+          - { dir: integrations/haraka, name: haraka-plugin }
+    defaults:
+      run:
+        working-directory: ${{ matrix.package.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.package.dir }}/package-lock.json
+      - run: npm ci
+      - name: Generate SBOM
+        run: npx --yes @cyclonedx/cyclonedx-npm --output-file ${{ matrix.package.name }}-sbom.cdx.json
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package.name }}-sbom
+          path: ${{ matrix.package.dir }}/${{ matrix.package.name }}-sbom.cdx.json
+          retention-days: 90
+      - name: Attach SBOM to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" ${{ matrix.package.name }}-sbom.cdx.json --repo "${{ github.repository }}"
