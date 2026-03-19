@@ -288,11 +288,19 @@ class HealthResponse(BaseModel):
 
     model_config = ConfigDict(
         json_schema_extra={
-            "examples": [{"status": "ok"}],
+            "examples": [
+                {"status": "ok"},
+                {"status": "ok", "telemetry_enabled": True},
+            ],
         },
     )
 
     status: str
+    telemetry_enabled: bool | None = Field(
+        default=None,
+        description="Whether opt-in anonymous telemetry is enabled. "
+        "Present only when the [telemetry] section exists in config.",
+    )
 
 
 class ReadinessResponse(BaseModel):

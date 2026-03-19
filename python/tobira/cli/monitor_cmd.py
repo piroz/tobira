@@ -146,6 +146,12 @@ def register(subparsers: "argparse._SubParsersAction[Any]") -> None:
         default=None,
         help="Current deployment phase for transition advice",
     )
+    parser.add_argument(
+        "--telemetry-dir",
+        default=None,
+        metavar="PATH",
+        help="Directory containing telemetry JSONL files for metrics summary",
+    )
     parser.set_defaults(func=_run)
 
 
@@ -161,6 +167,28 @@ def _run(args: argparse.Namespace) -> int:
     if args.watch:
         return _run_watch(args)
     return _run_once(args)
+
+
+def _print_metrics_summary(telemetry_dir: str) -> None:
+    """Print a deployment metrics summary from local telemetry data.
+
+    Args:
+        telemetry_dir: Path to the directory containing telemetry files.
+    """
+    try:
+        from tobira.telemetry import (
+            TelemetryCollector,
+            TelemetryConfig,
+            format_metrics_summary,
+        )
+
+        config = TelemetryConfig(enabled=True, storage_dir=telemetry_dir)
+        collector = TelemetryCollector(config)
+        summary = collector.summarize()
+        print()
+        print(format_metrics_summary(summary))
+    except Exception as exc:
+        logger.warning("Failed to load telemetry metrics: %s", exc)
 
 
 def _run_once(args: argparse.Namespace) -> int:
@@ -190,6 +218,9 @@ def _run_once(args: argparse.Namespace) -> int:
         print(_format_json(report))
     else:
         print(_format_text(report))
+
+    if args.telemetry_dir is not None:
+        _print_metrics_summary(args.telemetry_dir)
 
     return 0
 

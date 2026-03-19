@@ -29,6 +29,7 @@ def create_app(
     ai_detection: Optional[dict[str, Any]] = None,
     ab_test: Optional[dict[str, Any]] = None,
     active_learning: Optional[dict[str, Any]] = None,
+    telemetry: Optional[dict[str, Any]] = None,
 ) -> Any:
     """Create a FastAPI application with the given backend.
 
@@ -62,6 +63,10 @@ def create_app(
             ``/active-learning/stats``) are registered. Accepts optional
             ``strategy``, ``uncertainty_threshold``, ``max_queue_size``,
             and ``queue_path`` keys.
+        telemetry: Optional telemetry configuration dict.
+            When ``{"enabled": true}`` is set, the ``/health`` endpoint
+            includes ``telemetry_enabled`` in its response and heartbeats
+            are recorded locally.
 
     Returns:
         A FastAPI application.
@@ -85,6 +90,16 @@ def create_app(
 
         threshold = ai_detection.get("threshold", 0.65)
         ai_detector = AIGeneratedDetector(threshold=threshold)
+
+    telemetry_collector = None
+    telemetry_enabled: Optional[bool] = None
+    if telemetry is not None:
+        from tobira.telemetry import TelemetryCollector, TelemetryConfig
+
+        tel_cfg = TelemetryConfig.from_dict(telemetry)
+        telemetry_enabled = tel_cfg.enabled
+        if tel_cfg.enabled:
+            telemetry_collector = TelemetryCollector(tel_cfg)
 
     readiness = ReadinessState()
 
@@ -333,9 +348,23 @@ def create_app(
             model_version=variant_name,
         )
 
-    @v1_router.get("/health", response_model=HealthResponse, tags=["health"])
+    @v1_router.get(
+        "/health",
+        response_model=HealthResponse,
+        response_model_exclude_none=True,
+        tags=["health"],
+    )
     async def health() -> HealthResponse:
-        return HealthResponse(status="ok")
+        if telemetry_collector is not None:
+            backend_name = type(backend).__name__
+            try:
+                telemetry_collector.record_heartbeat(backend_name)
+            except Exception:
+                pass  # telemetry must never break health checks
+        return HealthResponse(
+            status="ok",
+            telemetry_enabled=telemetry_enabled,
+        )
 
     @v1_router.get(
         "/health/ready", response_model=ReadinessResponse, tags=["health"]
@@ -362,7 +391,12 @@ def create_app(
     app.post("/predict", response_model=PredictResponse, tags=["prediction"])(
         predict
     )
-    app.get("/health", response_model=HealthResponse, tags=["health"])(health)
+    app.get(
+        "/health",
+        response_model=HealthResponse,
+        response_model_exclude_none=True,
+        tags=["health"],
+    )(health)
     app.get("/health/ready", response_model=ReadinessResponse, tags=["health"])(
         health_ready
     )
@@ -402,6 +436,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     ai_detection_config = config.get("ai_detection")
     ab_test_config = config.get("ab_test")
     active_learning_config = config.get("active_learning")
+    telemetry_config = config.get("telemetry")
 
     app = create_app(
         backend,
@@ -412,6 +447,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
         ai_detection=ai_detection_config,
         ab_test=ab_test_config,
         active_learning=active_learning_config,
+        telemetry=telemetry_config,
     )
 
     ha_config = config.get("ha", {})

@@ -157,4 +157,18 @@ def _run(args: argparse.Namespace) -> int:
         print("\nAll checks passed.")
     else:
         print("\nSome checks failed.")
+
+    # Record doctor run for telemetry metrics when enabled.
+    try:
+        from tobira.config import load_toml
+        from tobira.telemetry import TelemetryCollector, TelemetryConfig
+
+        config = load_toml(args.config)
+        tel_cfg = TelemetryConfig.from_dict(config.get("telemetry", {}))
+        if tel_cfg.enabled:
+            collector = TelemetryCollector(tel_cfg)
+            collector.record_doctor_run(results)
+    except Exception:
+        pass  # telemetry must never break the CLI
+
     return 0 if all_ok else 1
