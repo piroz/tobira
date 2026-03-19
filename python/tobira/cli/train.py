@@ -5,8 +5,19 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from pathlib import Path
 from typing import Any
+
+from tobira.errors import (
+    CLI_INVALID_ARGUMENT,
+    CONFIG_MISSING_SECTION,
+    CONFIG_NOT_FOUND,
+    DATA_EMPTY,
+    DATA_INVALID_FORMAT,
+    DATA_NOT_FOUND,
+    format_cli_error,
+)
 
 
 def register(subparsers: "argparse._SubParsersAction[Any]") -> None:
@@ -153,40 +164,65 @@ def _run(args: argparse.Namespace) -> int:
     # Load config
     config_path = Path(args.config)
     if not config_path.exists():
-        print(f"Error: config not found: {args.config}")
+        print(
+            format_cli_error(CONFIG_NOT_FOUND, f"Config not found: {args.config}"),
+            file=sys.stderr,
+        )
         return 1
 
     try:
         config = load_toml(args.config)
-    except FileNotFoundError as exc:
-        print(f"Error: {exc}")
+    except FileNotFoundError:
+        print(
+            format_cli_error(CONFIG_NOT_FOUND, f"Config not found: {args.config}"),
+            file=sys.stderr,
+        )
         return 1
 
     if "training" not in config:
-        print("Error: missing [training] section in config")
+        print(
+            format_cli_error(
+                CONFIG_MISSING_SECTION,
+                "Missing [training] section in config.",
+                hint="Add a [training] section with model_name, epochs, etc.",
+            ),
+            file=sys.stderr,
+        )
         return 1
 
     # Load data
     data_path = Path(args.data)
     if not data_path.exists():
-        print(f"Error: data file not found: {args.data}")
+        print(
+            format_cli_error(DATA_NOT_FOUND, f"Data file not found: {args.data}"),
+            file=sys.stderr,
+        )
         return 1
 
     try:
         rows = _load_labelled_data(data_path)
     except (ValueError, Exception) as exc:
-        print(f"Error loading data: {exc}")
+        print(
+            format_cli_error(DATA_INVALID_FORMAT, f"Failed to load data: {exc}"),
+            file=sys.stderr,
+        )
         return 1
 
     if not rows:
-        print("Error: data file is empty")
+        print(
+            format_cli_error(DATA_EMPTY, "Data file is empty."),
+            file=sys.stderr,
+        )
         return 1
 
     # Parse split ratio
     try:
         train_ratio, val_ratio, _test_ratio = _parse_split_ratio(args.split_ratio)
     except ValueError as exc:
-        print(f"Error: {exc}")
+        print(
+            format_cli_error(CLI_INVALID_ARGUMENT, str(exc)),
+            file=sys.stderr,
+        )
         return 1
 
     # Split data
@@ -197,7 +233,10 @@ def _run(args: argparse.Namespace) -> int:
     )
 
     if not train_data:
-        print("Error: training set is empty after split")
+        print(
+            format_cli_error(DATA_EMPTY, "Training set is empty after split."),
+            file=sys.stderr,
+        )
         return 1
 
     # Step 1: Preprocessing (optional)
@@ -208,9 +247,16 @@ def _run(args: argparse.Namespace) -> int:
         try:
             from tobira.preprocessing.pipeline import PreprocessingPipeline
         except ImportError:
+            from tobira.errors import BACKEND_IMPORT_ERROR
+
             print(
-                "Error: preprocessing.pipeline module not available. "
-                "Install required dependencies or check your installation."
+                format_cli_error(
+                    BACKEND_IMPORT_ERROR,
+                    "preprocessing.pipeline module not available.",
+                    hint="Install required dependencies: "
+                    "pip install tobira[preprocessing]",
+                ),
+                file=sys.stderr,
             )
             return 1
 
@@ -222,7 +268,10 @@ def _run(args: argparse.Namespace) -> int:
                     pp_result = pipeline.run(row["text"])
                     row["text"] = pp_result.text
         except Exception as exc:
-            print(f"Error during preprocessing: {exc}")
+            print(
+                format_cli_error(DATA_INVALID_FORMAT, f"Preprocessing failed: {exc}"),
+                file=sys.stderr,
+            )
             return 1
         print("Preprocessing complete.")
 
@@ -233,9 +282,15 @@ def _run(args: argparse.Namespace) -> int:
             train,
         )
     except ImportError:
+        from tobira.errors import BACKEND_IMPORT_ERROR
+
         print(
-            "Error: core.trainer module not available. "
-            "Install required dependencies or check your installation."
+            format_cli_error(
+                BACKEND_IMPORT_ERROR,
+                "core.trainer module not available.",
+                hint="Install required dependencies: pip install tobira[training]",
+            ),
+            file=sys.stderr,
         )
         return 1
 
@@ -262,7 +317,12 @@ def _run(args: argparse.Namespace) -> int:
             config=train_config,
         )
     except (ImportError, RuntimeError) as exc:
-        print(f"Error during training: {exc}")
+        from tobira.errors import BACKEND_INFERENCE_FAILED
+
+        print(
+            format_cli_error(BACKEND_INFERENCE_FAILED, f"Training failed: {exc}"),
+            file=sys.stderr,
+        )
         return 1
 
     print(f"Training complete: {result.output_path}")

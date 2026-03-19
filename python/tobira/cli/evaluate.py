@@ -5,8 +5,19 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from pathlib import Path
 from typing import Any
+
+from tobira.errors import (
+    CONFIG_MISSING_SECTION,
+    CONFIG_NOT_FOUND,
+    DATA_EMPTY,
+    DATA_INVALID_FORMAT,
+    DATA_MISSING_COLUMNS,
+    DATA_NOT_FOUND,
+    format_cli_error,
+)
 
 
 def _load_csv(path: Path) -> list[dict[str, str]]:
@@ -116,23 +127,38 @@ def _run(args: argparse.Namespace) -> int:
 
     dataset_path = Path(args.dataset)
     if not dataset_path.exists():
-        print(f"Error: dataset not found: {args.dataset}")
+        print(
+            format_cli_error(DATA_NOT_FOUND, f"Dataset not found: {args.dataset}"),
+            file=sys.stderr,
+        )
         return 1
 
     try:
         rows = _load_dataset(dataset_path)
     except (ValueError, json.JSONDecodeError) as exc:
-        print(f"Error: {exc}")
+        print(
+            format_cli_error(DATA_INVALID_FORMAT, str(exc)),
+            file=sys.stderr,
+        )
         return 1
 
     if not rows:
-        print("Error: dataset is empty")
+        print(
+            format_cli_error(DATA_EMPTY, "Dataset is empty."),
+            file=sys.stderr,
+        )
         return 1
 
     # Validate required columns
     first_row = rows[0]
     if "text" not in first_row or "label" not in first_row:
-        print("Error: dataset must contain 'text' and 'label' columns")
+        print(
+            format_cli_error(
+                DATA_MISSING_COLUMNS,
+                "Dataset must contain 'text' and 'label' columns.",
+            ),
+            file=sys.stderr,
+        )
         return 1
 
     y_true = [int(row["label"]) for row in rows]
@@ -148,20 +174,37 @@ def _run(args: argparse.Namespace) -> int:
 
         try:
             config = load_toml(args.config)
-        except FileNotFoundError as exc:
-            print(f"Error: {exc}")
+        except FileNotFoundError:
+            print(
+                format_cli_error(
+                    CONFIG_NOT_FOUND, f"Config file not found: {args.config}"
+                ),
+                file=sys.stderr,
+            )
             return 1
 
         if "backend" not in config:
-            print("Error: missing [backend] section in config")
+            print(
+                format_cli_error(
+                    CONFIG_MISSING_SECTION,
+                    "Missing [backend] section in config.",
+                    hint="Add a [backend] section with at least a 'type' key.",
+                ),
+                file=sys.stderr,
+            )
             return 1
 
         backend = create_backend(config["backend"])
         scores = [backend.predict(row["text"]).score for row in rows]
     else:
         print(
-            "Error: either provide a 'score' column in the dataset "
-            "or specify --config for backend inference"
+            format_cli_error(
+                DATA_MISSING_COLUMNS,
+                "No 'score' column in dataset and no --config specified.",
+                hint="Either add a 'score' column to the dataset "
+                "or pass --config for backend inference.",
+            ),
+            file=sys.stderr,
         )
         return 1
 
@@ -230,17 +273,33 @@ def _run_benchmark(
 
     benchmark_path = Path(args.benchmark)
     if not benchmark_path.exists():
-        print(f"Error: benchmark config not found: {args.benchmark}")
+        print(
+            format_cli_error(
+                CONFIG_NOT_FOUND, f"Benchmark config not found: {args.benchmark}"
+            ),
+            file=sys.stderr,
+        )
         return 1
 
     try:
         bench_config = load_toml(args.benchmark)
-    except FileNotFoundError as exc:
-        print(f"Error: {exc}")
+    except FileNotFoundError:
+        print(
+            format_cli_error(
+                CONFIG_NOT_FOUND, f"Benchmark config not found: {args.benchmark}"
+            ),
+            file=sys.stderr,
+        )
         return 1
 
     if "benchmarks" not in bench_config:
-        print("Error: missing [benchmarks] section in benchmark config")
+        print(
+            format_cli_error(
+                CONFIG_MISSING_SECTION,
+                "Missing [benchmarks] section in benchmark config.",
+            ),
+            file=sys.stderr,
+        )
         return 1
 
     benchmarks_section: dict[str, Any] = bench_config["benchmarks"]
@@ -249,7 +308,15 @@ def _run_benchmark(
         try:
             backends[name] = create_backend(backend_config)
         except (ValueError, KeyError) as exc:
-            print(f"Error creating backend '{name}': {exc}")
+            from tobira.errors import BACKEND_INIT_FAILED
+
+            print(
+                format_cli_error(
+                    BACKEND_INIT_FAILED,
+                    f"Failed to create backend {name!r}: {exc}",
+                ),
+                file=sys.stderr,
+            )
             return 1
 
     texts = [row["text"] for row in rows]

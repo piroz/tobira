@@ -5,6 +5,10 @@ from typing import Any, Optional
 from tobira.backends.factory import create_backend
 from tobira.backends.protocol import BackendProtocol
 from tobira.config import load_toml
+from tobira.errors import (
+    SERVING_NOT_FOUND,
+    SERVING_NOT_READY,
+)
 
 
 def _import_deps() -> tuple[Any, Any]:
@@ -18,6 +22,19 @@ def _import_deps() -> tuple[Any, Any]:
             "Install them with: pip install tobira[serving]"
         ) from None
     return fastapi, uvicorn
+
+
+def _make_error_response(
+    status_code: int, title: str, detail: str, code: str,
+) -> dict[str, Any]:
+    """Build an RFC 7807 Problem Details dict."""
+    return {
+        "type": "about:blank",
+        "title": title,
+        "status": status_code,
+        "detail": detail,
+        "code": code,
+    }
 
 
 def create_app(
@@ -77,6 +94,7 @@ def create_app(
     from tobira.serving.ha import ReadinessState
     from tobira.serving.schemas import (
         AIGeneratedInfo,
+        ErrorResponse,
         HealthResponse,
         LivenessResponse,
         PredictRequest,
@@ -111,6 +129,28 @@ def create_app(
     app.state.backend = backend
     app.state.header_analysis = header_analysis
     app.state.readiness = readiness
+
+    from fastapi.exceptions import RequestValidationError
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        request: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        """Return validation errors in RFC 7807 format."""
+        from tobira.errors import SERVING_VALIDATION_ERROR
+
+        return JSONResponse(
+            status_code=422,
+            content=_make_error_response(
+                422,
+                "Validation Error",
+                str(exc),
+                SERVING_VALIDATION_ERROR,
+            ),
+        )
 
     # Backend is already loaded at this point, so mark as ready.
     # During shutdown, GracefulShutdown sets this back to False.
@@ -239,10 +279,15 @@ def create_app(
         ) -> ActiveLearningLabelResponse:
             updated = sampler.label_sample(req.sample_id, req.label)
             if updated is None:
-                fastapi, _ = _import_deps()
                 raise fastapi.HTTPException(
                     status_code=404,
-                    detail=f"Sample {req.sample_id} not found",
+                    detail=_make_error_response(
+                        404,
+                        "Not Found",
+                        f"Sample {req.sample_id!r} not found "
+                        "in the active learning queue.",
+                        SERVING_NOT_FOUND,
+                    ),
                 )
             return ActiveLearningLabelResponse(
                 status="labeled",
@@ -260,13 +305,21 @@ def create_app(
             return ActiveLearningStatsResponse(**stats)
 
     @v1_router.post(
-        "/predict", response_model=PredictResponse, tags=["prediction"]
+        "/predict",
+        response_model=PredictResponse,
+        responses={503: {"model": ErrorResponse}},
+        tags=["prediction"],
     )
     async def predict(req: PredictRequest) -> PredictResponse:
         if not readiness.ready:
             raise fastapi.HTTPException(
                 status_code=503,
-                detail="Service not ready",
+                detail=_make_error_response(
+                    503,
+                    "Service Not Ready",
+                    "The backend model is still loading.",
+                    SERVING_NOT_READY,
+                ),
             )
         variant_name: Optional[str] = None
         if app.state.ab_router is not None:

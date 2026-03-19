@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
 from tobira.cli.generators import generate_configs, get_install_instructions
 from tobira.cli.mta_detectors import detect_mtas
+from tobira.errors import CONFIG_INVALID_SYNTAX, format_cli_error
 
 # Supported MTA names for manual selection.
 _SUPPORTED_MTAS = ("rspamd", "spamassassin", "haraka")
@@ -118,7 +120,10 @@ def run_init(
     try:
         generated = generate_configs(mta=mta, output_dir=output_dir, api_url=api_url)
     except (ValueError, FileNotFoundError) as exc:
-        print(f"Error: {exc}")
+        print(
+            format_cli_error(CONFIG_INVALID_SYNTAX, str(exc)),
+            file=sys.stderr,
+        )
         return 1
 
     for path in generated:

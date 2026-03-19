@@ -420,3 +420,52 @@ class ActiveLearningStatsResponse(BaseModel):
     pending: int
     labeled: int
     label_counts: dict[str, int]
+
+
+class ErrorResponse(BaseModel):
+    """RFC 7807 Problem Details error response.
+
+    All API error responses use this schema, providing a machine-readable
+    ``code`` for programmatic handling and a human-readable ``detail`` for
+    debugging.
+
+    See https://datatracker.ietf.org/doc/html/rfc7807
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "type": "about:blank",
+                    "title": "Service Not Ready",
+                    "status": 503,
+                    "detail": "The backend model is still loading.",
+                    "code": "SERVING_NOT_READY",
+                },
+                {
+                    "type": "about:blank",
+                    "title": "Not Found",
+                    "status": 404,
+                    "detail": "Sample abc-123 not found.",
+                    "code": "SERVING_NOT_FOUND",
+                },
+            ],
+        },
+    )
+
+    type: str = Field(
+        default="about:blank",
+        description="A URI reference identifying the problem type.",
+    )
+    title: str = Field(
+        description="A short, human-readable summary of the problem type.",
+    )
+    status: int = Field(
+        description="The HTTP status code.",
+    )
+    detail: str = Field(
+        description="A human-readable explanation specific to this occurrence.",
+    )
+    code: str = Field(
+        description="A machine-readable tobira error code (e.g. SERVING_NOT_READY).",
+    )
