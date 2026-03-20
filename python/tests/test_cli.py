@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import textwrap
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -281,6 +282,217 @@ class TestDoctorChecks:
         assert "spamassassin" in mta_names
         assert "haraka" in mta_names
         assert len(results) == 3
+
+
+class TestDoctorAuxiliaryChecks:
+    """Tests for auxiliary configuration validation checks (Issue #109)."""
+
+    def test_telemetry_storage_disabled(self) -> None:
+        from tobira.cli.doctor import _check_telemetry_storage
+
+        config: dict[str, Any] = {"telemetry": {"enabled": False}}
+        ok, msg = _check_telemetry_storage(config)
+        assert ok is True
+        assert "disabled" in msg
+
+    def test_telemetry_storage_no_section(self) -> None:
+        from tobira.cli.doctor import _check_telemetry_storage
+
+        ok, msg = _check_telemetry_storage({})
+        assert ok is True
+        assert "disabled" in msg
+
+    def test_telemetry_storage_dir_writable(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from tobira.cli.doctor import _check_telemetry_storage
+
+        config: dict[str, Any] = {
+            "telemetry": {"enabled": True, "storage_dir": str(tmp_path)},
+        }
+        ok, msg = _check_telemetry_storage(config)
+        assert ok is True
+        assert "writable" in msg
+
+    def test_telemetry_storage_dir_not_exist(self) -> None:
+        from tobira.cli.doctor import _check_telemetry_storage
+
+        config: dict[str, Any] = {
+            "telemetry": {"enabled": True, "storage_dir": "/nonexistent/dir"},
+        }
+        ok, msg = _check_telemetry_storage(config)
+        assert ok is False
+        assert "does not exist" in msg
+
+    def test_header_analysis_weight_disabled(self) -> None:
+        from tobira.cli.doctor import _check_header_analysis_weight
+
+        config: dict[str, Any] = {"header_analysis": {"enabled": False}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is True
+        assert "disabled" in msg
+
+    def test_header_analysis_weight_valid(self) -> None:
+        from tobira.cli.doctor import _check_header_analysis_weight
+
+        config: dict[str, Any] = {
+            "header_analysis": {"enabled": True, "weight": 0.5},
+        }
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is True
+        assert "0.5" in msg
+
+    def test_header_analysis_weight_default(self) -> None:
+        from tobira.cli.doctor import _check_header_analysis_weight
+
+        config: dict[str, Any] = {"header_analysis": {"enabled": True}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is True
+        assert "0.3" in msg
+
+    def test_header_analysis_weight_out_of_range(self) -> None:
+        from tobira.cli.doctor import _check_header_analysis_weight
+
+        config: dict[str, Any] = {
+            "header_analysis": {"enabled": True, "weight": 1.5},
+        }
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is False
+        assert "between 0.0 and 1.0" in msg
+
+    def test_header_analysis_weight_negative(self) -> None:
+        from tobira.cli.doctor import _check_header_analysis_weight
+
+        config: dict[str, Any] = {
+            "header_analysis": {"enabled": True, "weight": -0.1},
+        }
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is False
+        assert "between 0.0 and 1.0" in msg
+
+    def test_ai_detection_threshold_disabled(self) -> None:
+        from tobira.cli.doctor import _check_ai_detection_threshold
+
+        config: dict[str, Any] = {"ai_detection": {"enabled": False}}
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is True
+        assert "disabled" in msg
+
+    def test_ai_detection_threshold_valid(self) -> None:
+        from tobira.cli.doctor import _check_ai_detection_threshold
+
+        config: dict[str, Any] = {
+            "ai_detection": {"enabled": True, "threshold": 0.7},
+        }
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is True
+        assert "0.7" in msg
+
+    def test_ai_detection_threshold_default(self) -> None:
+        from tobira.cli.doctor import _check_ai_detection_threshold
+
+        config: dict[str, Any] = {"ai_detection": {"enabled": True}}
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is True
+        assert "0.65" in msg
+
+    def test_ai_detection_threshold_out_of_range(self) -> None:
+        from tobira.cli.doctor import _check_ai_detection_threshold
+
+        config: dict[str, Any] = {
+            "ai_detection": {"enabled": True, "threshold": 2.0},
+        }
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is False
+        assert "between 0.0 and 1.0" in msg
+
+    def test_ai_detection_threshold_negative(self) -> None:
+        from tobira.cli.doctor import _check_ai_detection_threshold
+
+        config: dict[str, Any] = {
+            "ai_detection": {"enabled": True, "threshold": -0.5},
+        }
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is False
+        assert "between 0.0 and 1.0" in msg
+
+    def test_model_path_fasttext_exists(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli.doctor import _check_model_path
+
+        model_file = Path(str(tmp_path)) / "model.bin"
+        model_file.write_bytes(b"fake")
+        config: dict[str, Any] = {
+            "backend": {"backend": "fasttext", "model_path": str(model_file)},
+        }
+        results = _check_model_path(config)
+        assert len(results) == 1
+        assert results[0][0] is True
+        assert "fasttext model file exists" in results[0][1]
+
+    def test_model_path_fasttext_not_found(self) -> None:
+        from tobira.cli.doctor import _check_model_path
+
+        config: dict[str, Any] = {
+            "backend": {
+                "backend": "fasttext",
+                "model_path": "/nonexistent/model.bin",
+            },
+        }
+        results = _check_model_path(config)
+        assert len(results) == 1
+        assert results[0][0] is False
+        assert "fasttext model file not found" in results[0][1]
+
+    def test_model_path_onnx_exists(
+        self, tmp_path: "os.PathLike[str]"
+    ) -> None:
+        from pathlib import Path
+
+        from tobira.cli.doctor import _check_model_path
+
+        model_file = Path(str(tmp_path)) / "model.onnx"
+        model_file.write_bytes(b"fake")
+        config: dict[str, Any] = {
+            "backend": {"backend": "onnx", "model_path": str(model_file)},
+        }
+        results = _check_model_path(config)
+        assert len(results) == 1
+        assert results[0][0] is True
+        assert "ONNX model file exists" in results[0][1]
+
+    def test_model_path_onnx_not_found(self) -> None:
+        from tobira.cli.doctor import _check_model_path
+
+        config: dict[str, Any] = {
+            "backend": {
+                "backend": "onnx",
+                "model_path": "/nonexistent/model.onnx",
+            },
+        }
+        results = _check_model_path(config)
+        assert len(results) == 1
+        assert results[0][0] is False
+        assert "ONNX model file not found" in results[0][1]
+
+    def test_model_path_other_backend(self) -> None:
+        from tobira.cli.doctor import _check_model_path
+
+        config: dict[str, Any] = {
+            "backend": {"backend": "custom", "model_path": "/some/path"},
+        }
+        results = _check_model_path(config)
+        assert len(results) == 0
+
+    def test_model_path_no_model_path(self) -> None:
+        from tobira.cli.doctor import _check_model_path
+
+        config: dict[str, Any] = {"backend": {"backend": "fasttext"}}
+        results = _check_model_path(config)
+        assert len(results) == 0
 
 
 class TestDoctorRun:
