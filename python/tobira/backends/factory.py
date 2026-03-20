@@ -17,6 +17,42 @@ _BUILTIN_BACKENDS = frozenset(
 ENTRY_POINT_GROUP = "tobira.backends"
 
 
+def _build_few_shot_examples(
+    config: dict[str, Any],
+) -> list[Any] | None:
+    """Build FewShotExample list from config, if present.
+
+    Supports two forms in config:
+    - ``"few_shot_examples": [{"text": ..., "label": ..., "score": ...}, ...]``
+    - ``"few_shot_lang": "ja"`` or ``"en"`` to use built-in default examples.
+
+    Returns ``None`` if neither key is present.
+    """
+    from tobira.backends.prompts import (
+        DEFAULT_FEW_SHOT_EXAMPLES,
+        FewShotExample,
+    )
+
+    raw_examples = config.get("few_shot_examples")
+    if raw_examples is not None:
+        return [
+            FewShotExample(text=ex["text"], label=ex["label"], score=ex["score"])
+            for ex in raw_examples
+        ]
+
+    lang = config.get("few_shot_lang")
+    if lang is not None:
+        examples = DEFAULT_FEW_SHOT_EXAMPLES.get(lang)
+        if examples is None:
+            raise ValueError(
+                f"unknown few_shot_lang: {lang!r}. "
+                f"Available: {sorted(DEFAULT_FEW_SHOT_EXAMPLES.keys())}"
+            )
+        return examples
+
+    return None
+
+
 def _load_plugin_backends() -> dict[str, Any]:
     """Discover backend plugins registered via entry_points."""
     from importlib.metadata import entry_points
@@ -120,6 +156,9 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
         timeout = config.get("timeout")
         if timeout is not None:
             ollama_kwargs["timeout"] = timeout
+        few_shot = _build_few_shot_examples(config)
+        if few_shot is not None:
+            ollama_kwargs["few_shot_examples"] = few_shot
         return OllamaBackend(**ollama_kwargs)
 
     if backend_type == "llm_api":
@@ -138,6 +177,9 @@ def create_backend(config: dict[str, Any]) -> BackendProtocol:
         timeout = config.get("timeout")
         if timeout is not None:
             llm_kwargs["timeout"] = timeout
+        few_shot = _build_few_shot_examples(config)
+        if few_shot is not None:
+            llm_kwargs["few_shot_examples"] = few_shot
         return LlmApiBackend(**llm_kwargs)
 
     if backend_type == "two_stage":

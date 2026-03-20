@@ -795,6 +795,256 @@ class TestPrompts:
         assert "JSON" in SPAM_CLASSIFICATION_SYSTEM
 
 
+class TestFewShotExample:
+    def test_dataclass_frozen(self) -> None:
+        from tobira.backends.prompts import FewShotExample
+
+        ex = FewShotExample(text="test", label="spam", score=0.9)
+        with pytest.raises(AttributeError):
+            ex.text = "changed"  # type: ignore[misc]
+
+    def test_attributes(self) -> None:
+        from tobira.backends.prompts import FewShotExample
+
+        ex = FewShotExample(text="buy now", label="spam", score=0.97)
+        assert ex.text == "buy now"
+        assert ex.label == "spam"
+        assert ex.score == 0.97
+
+
+class TestDefaultFewShotExamples:
+    def test_ja_examples_exist(self) -> None:
+        from tobira.backends.prompts import DEFAULT_FEW_SHOT_EXAMPLES
+
+        assert "ja" in DEFAULT_FEW_SHOT_EXAMPLES
+        examples = DEFAULT_FEW_SHOT_EXAMPLES["ja"]
+        assert len(examples) >= 2
+        labels = {ex.label for ex in examples}
+        assert "spam" in labels
+        assert "ham" in labels
+
+    def test_en_examples_exist(self) -> None:
+        from tobira.backends.prompts import DEFAULT_FEW_SHOT_EXAMPLES
+
+        assert "en" in DEFAULT_FEW_SHOT_EXAMPLES
+        examples = DEFAULT_FEW_SHOT_EXAMPLES["en"]
+        assert len(examples) >= 2
+        labels = {ex.label for ex in examples}
+        assert "spam" in labels
+        assert "ham" in labels
+
+
+class TestBuildFewShotSystemPrompt:
+    def test_includes_examples(self) -> None:
+        from tobira.backends.prompts import (
+            FewShotExample,
+            build_few_shot_system_prompt,
+        )
+
+        examples = [
+            FewShotExample(text="spam text", label="spam", score=0.95),
+            FewShotExample(text="ham text", label="ham", score=0.90),
+        ]
+        result = build_few_shot_system_prompt(examples)
+        assert "spam text" in result
+        assert "ham text" in result
+        assert '"label": "spam"' in result
+        assert '"label": "ham"' in result
+        assert "examples" in result.lower()
+
+    def test_includes_base_system_prompt(self) -> None:
+        from tobira.backends.prompts import (
+            SPAM_CLASSIFICATION_SYSTEM,
+            FewShotExample,
+            build_few_shot_system_prompt,
+        )
+
+        examples = [
+            FewShotExample(text="test", label="spam", score=0.9),
+        ]
+        result = build_few_shot_system_prompt(examples)
+        assert SPAM_CLASSIFICATION_SYSTEM in result
+
+
+class TestBuildFewShotMessages:
+    def test_message_structure(self) -> None:
+        from tobira.backends.prompts import FewShotExample, build_few_shot_messages
+
+        examples = [
+            FewShotExample(text="spam text", label="spam", score=0.95),
+        ]
+        messages = build_few_shot_messages(examples, "classify me")
+
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert "spam text" in messages[1]["content"]
+        assert messages[2]["role"] == "assistant"
+        assert '"spam"' in messages[2]["content"]
+        assert messages[3]["role"] == "user"
+        assert "classify me" in messages[3]["content"]
+
+    def test_multiple_examples(self) -> None:
+        from tobira.backends.prompts import FewShotExample, build_few_shot_messages
+
+        examples = [
+            FewShotExample(text="spam1", label="spam", score=0.95),
+            FewShotExample(text="ham1", label="ham", score=0.90),
+        ]
+        messages = build_few_shot_messages(examples, "test")
+
+        # system + 2*(user+assistant) + final user = 6 messages
+        assert len(messages) == 6
+        assert messages[-1]["role"] == "user"
+        assert "test" in messages[-1]["content"]
+
+
+class TestOllamaFewShot:
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_few_shot_changes_system_prompt(self, mock_import: MagicMock) -> None:
+        from tobira.backends.ollama import OllamaBackend
+        from tobira.backends.prompts import FewShotExample
+
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_ollama_response("spam", 0.95)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        examples = [
+            FewShotExample(text="spam example", label="spam", score=0.95),
+            FewShotExample(text="ham example", label="ham", score=0.90),
+        ]
+        backend = OllamaBackend(few_shot_examples=examples)
+        backend.predict("test email")
+
+        call_args = mock_client.post.call_args
+        system = call_args[1]["json"]["system"]
+        assert "spam example" in system
+        assert "ham example" in system
+
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_zero_shot_default(self, mock_import: MagicMock) -> None:
+        from tobira.backends.ollama import OllamaBackend
+        from tobira.backends.prompts import SPAM_CLASSIFICATION_SYSTEM
+
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_ollama_response("spam", 0.95)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        backend = OllamaBackend()
+        backend.predict("test email")
+
+        call_args = mock_client.post.call_args
+        system = call_args[1]["json"]["system"]
+        assert system == SPAM_CLASSIFICATION_SYSTEM
+
+
+class TestLlmApiFewShot:
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_few_shot_adds_example_messages(self, mock_import: MagicMock) -> None:
+        from tobira.backends.llm_api import LlmApiBackend
+        from tobira.backends.prompts import FewShotExample
+
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_llm_api_response("spam", 0.92)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        examples = [
+            FewShotExample(text="spam example", label="spam", score=0.95),
+            FewShotExample(text="ham example", label="ham", score=0.90),
+        ]
+        backend = LlmApiBackend(api_key="test-key", few_shot_examples=examples)
+        backend.predict("test email")
+
+        call_args = mock_client.post.call_args
+        messages = call_args[1]["json"]["messages"]
+        # system + 2*(user+assistant) + final user = 6
+        assert len(messages) == 6
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert "spam example" in messages[1]["content"]
+        assert messages[2]["role"] == "assistant"
+
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_zero_shot_default(self, mock_import: MagicMock) -> None:
+        from tobira.backends.llm_api import LlmApiBackend
+
+        mock_httpx = MagicMock()
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_mock_llm_api_response("spam", 0.92)
+        mock_httpx.Client.return_value = mock_client
+        mock_import.return_value = mock_httpx
+
+        backend = LlmApiBackend(api_key="test-key")
+        backend.predict("test email")
+
+        call_args = mock_client.post.call_args
+        messages = call_args[1]["json"]["messages"]
+        # system + user = 2 (zero-shot)
+        assert len(messages) == 2
+
+
+class TestFewShotFactory:
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_ollama_with_few_shot_lang(self, mock_import: MagicMock) -> None:
+        mock_import.return_value = MagicMock()
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = create_backend({"type": "ollama", "few_shot_lang": "ja"})
+        assert isinstance(backend, OllamaBackend)
+        assert backend._few_shot_examples is not None
+        assert len(backend._few_shot_examples) >= 2
+
+    @patch("tobira.backends.ollama._import_httpx")
+    def test_ollama_with_custom_few_shot(self, mock_import: MagicMock) -> None:
+        mock_import.return_value = MagicMock()
+
+        from tobira.backends.ollama import OllamaBackend
+
+        backend = create_backend({
+            "type": "ollama",
+            "few_shot_examples": [
+                {"text": "custom spam", "label": "spam", "score": 0.9},
+                {"text": "custom ham", "label": "ham", "score": 0.85},
+            ],
+        })
+        assert isinstance(backend, OllamaBackend)
+        assert backend._few_shot_examples is not None
+        assert len(backend._few_shot_examples) == 2
+        assert backend._few_shot_examples[0].text == "custom spam"
+
+    @patch("tobira.backends.llm_api._import_httpx")
+    def test_llm_api_with_few_shot_lang(self, mock_import: MagicMock) -> None:
+        mock_import.return_value = MagicMock()
+
+        from tobira.backends.llm_api import LlmApiBackend
+
+        backend = create_backend({
+            "type": "llm_api",
+            "api_key": "test-key",
+            "few_shot_lang": "en",
+        })
+        assert isinstance(backend, LlmApiBackend)
+        assert backend._few_shot_examples is not None
+        assert len(backend._few_shot_examples) >= 2
+
+    def test_unknown_few_shot_lang_raises(self) -> None:
+        from tobira.backends.factory import _build_few_shot_examples
+
+        with pytest.raises(ValueError, match="unknown few_shot_lang"):
+            _build_few_shot_examples({"few_shot_lang": "xx"})
+
+    def test_no_few_shot_returns_none(self) -> None:
+        from tobira.backends.factory import _build_few_shot_examples
+
+        assert _build_few_shot_examples({}) is None
+
+
 class TestTwoStageBackend:
     def test_first_stage_decides_spam(self) -> None:
         """First stage score >= high threshold -> first stage result returned."""

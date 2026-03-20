@@ -7,6 +7,8 @@ from typing import Any
 
 from tobira.backends.prompts import (
     SPAM_CLASSIFICATION_SYSTEM,
+    FewShotExample,
+    build_few_shot_system_prompt,
     build_prompt,
     parse_llm_result,
 )
@@ -32,6 +34,9 @@ class OllamaBackend:
         model: Ollama model name (e.g. ``gemma2:2b``).
         base_url: Ollama API base URL.
         timeout: Request timeout in seconds.
+        few_shot_examples: Optional list of few-shot examples. When provided,
+            examples are included in the system prompt to improve classification
+            accuracy.
     """
 
     def __init__(
@@ -39,20 +44,27 @@ class OllamaBackend:
         model: str = "gemma2:2b",
         base_url: str = "http://localhost:11434",
         timeout: float = 30.0,
+        few_shot_examples: list[FewShotExample] | None = None,
     ) -> None:
         httpx = _import_httpx()
         self._model = model
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._client: Any = httpx.Client(timeout=timeout)
+        self._few_shot_examples = few_shot_examples
 
     def predict(self, text: str) -> PredictionResult:
         """Run inference on the given text via Ollama API."""
+        if self._few_shot_examples:
+            system = build_few_shot_system_prompt(self._few_shot_examples)
+        else:
+            system = SPAM_CLASSIFICATION_SYSTEM
+
         response = self._client.post(
             f"{self._base_url}/api/generate",
             json={
                 "model": self._model,
-                "system": SPAM_CLASSIFICATION_SYSTEM,
+                "system": system,
                 "prompt": build_prompt(text),
                 "format": "json",
                 "stream": False,

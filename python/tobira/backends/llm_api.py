@@ -8,6 +8,8 @@ from typing import Any
 
 from tobira.backends.prompts import (
     SPAM_CLASSIFICATION_SYSTEM,
+    FewShotExample,
+    build_few_shot_messages,
     build_prompt,
     parse_llm_result,
 )
@@ -34,6 +36,9 @@ class LlmApiBackend:
         base_url: API base URL (must include ``/v1`` prefix if needed).
         api_key: API key. Defaults to ``TOBIRA_LLM_API_KEY`` environment variable.
         timeout: Request timeout in seconds.
+        few_shot_examples: Optional list of few-shot examples. When provided,
+            examples are included as user/assistant message pairs to improve
+            classification accuracy.
     """
 
     def __init__(
@@ -42,6 +47,7 @@ class LlmApiBackend:
         base_url: str = "https://api.openai.com/v1",
         api_key: str | None = None,
         timeout: float = 30.0,
+        few_shot_examples: list[FewShotExample] | None = None,
     ) -> None:
         httpx = _import_httpx()
         self._model = model
@@ -54,9 +60,18 @@ class LlmApiBackend:
             )
         self._timeout = timeout
         self._client: Any = httpx.Client(timeout=timeout)
+        self._few_shot_examples = few_shot_examples
 
     def predict(self, text: str) -> PredictionResult:
         """Run inference on the given text via chat completions API."""
+        if self._few_shot_examples:
+            messages = build_few_shot_messages(self._few_shot_examples, text)
+        else:
+            messages = [
+                {"role": "system", "content": SPAM_CLASSIFICATION_SYSTEM},
+                {"role": "user", "content": build_prompt(text)},
+            ]
+
         response = self._client.post(
             f"{self._base_url}/chat/completions",
             headers={
@@ -65,10 +80,7 @@ class LlmApiBackend:
             },
             json={
                 "model": self._model,
-                "messages": [
-                    {"role": "system", "content": SPAM_CLASSIFICATION_SYSTEM},
-                    {"role": "user", "content": build_prompt(text)},
-                ],
+                "messages": messages,
                 "response_format": {"type": "json_object"},
             },
         )
