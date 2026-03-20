@@ -14,10 +14,30 @@ class TobiraClient {
    * @param {string} baseUrl  Base URL of the tobira API (e.g. "http://127.0.0.1:8000").
    * @param {object} [options]
    * @param {number} [options.timeout=5000]  Request timeout in milliseconds.
+   * @param {string} [options.apiKey]  Optional API key for Bearer token authentication.
    */
   constructor(baseUrl, options = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.timeout = options.timeout ?? 5000;
+    this.apiKey = options.apiKey ?? null;
+  }
+
+  /**
+   * Build request headers, including Authorization if apiKey is set.
+   *
+   * @param {boolean} [json=false]  Whether to include Content-Type: application/json.
+   * @returns {Object<string, string>}
+   * @private
+   */
+  _buildHeaders(json = false) {
+    const headers = {};
+    if (json) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (this.apiKey) {
+      headers["Authorization"] = `Bearer ${this.apiKey}`;
+    }
+    return headers;
   }
 
   /**
@@ -41,7 +61,7 @@ class TobiraClient {
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this._buildHeaders(true),
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -72,7 +92,7 @@ class TobiraClient {
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this._buildHeaders(true),
         body: JSON.stringify({ text, label, source }),
         signal: controller.signal,
       });

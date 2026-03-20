@@ -41,6 +41,11 @@ sub set_config {
             default  => 0,
             type     => $Mail::SpamAssassin::Conf::CONF_TYPE_BOOL,
         },
+        {
+            setting  => 'tobira_api_key',
+            default  => '',
+            type     => $Mail::SpamAssassin::Conf::CONF_TYPE_STRING,
+        },
     );
 
     $conf->{parser}->register_commands(\@cmds);
@@ -69,7 +74,9 @@ sub check_tobira {
         $headers_ref = $self->_extract_headers($pms);
     }
 
-    my ($label, $score) = $self->_call_api($url, $timeout, $text, $headers_ref);
+    my $api_key = $pms->{conf}->{tobira_api_key} || "";
+
+    my ($label, $score) = $self->_call_api($url, $timeout, $text, $headers_ref, $api_key);
     unless (defined $score) {
         dbg("tobira: API call failed, inserting TOBIRA_FAIL");
         $pms->got_hit("TOBIRA_FAIL", "", score => 0);
@@ -130,7 +137,7 @@ sub _extract_headers {
 }
 
 sub _call_api {
-    my ($self, $url, $timeout, $text, $headers_ref) = @_;
+    my ($self, $url, $timeout, $text, $headers_ref, $api_key) = @_;
 
     eval { require LWP::UserAgent; require HTTP::Request; require JSON; };
     if ($@) {
@@ -151,6 +158,9 @@ sub _call_api {
 
     my $req = HTTP::Request->new('POST', $url);
     $req->header('Content-Type' => 'application/json');
+    if (defined $api_key && $api_key ne "") {
+        $req->header('Authorization' => "Bearer $api_key");
+    }
     $req->content($payload);
 
     my $res = eval { $ua->request($req) };

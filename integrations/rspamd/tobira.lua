@@ -16,7 +16,8 @@ local N = "tobira"
 local LABEL_SPAM = "spam"
 local LABEL_HAM = "ham"
 
-local PREDICT_HEADERS = { ["Content-Type"] = "application/json" }
+local DEFAULT_PREDICT_HEADERS = { ["Content-Type"] = "application/json" }
+local PREDICT_HEADERS = DEFAULT_PREDICT_HEADERS
 
 -- Symbol tiers ordered by threshold descending for score matching
 local SYMBOL_TIERS = {
@@ -230,6 +231,14 @@ local function configure(cfg)
 
   config = lua_util.override_defaults(default_config, opts)
   predict_url = config.api_url .. "/v1/predict"
+
+  if config.api_key then
+    PREDICT_HEADERS = {
+      ["Content-Type"] = "application/json",
+      ["Authorization"] = "Bearer " .. config.api_key,
+    }
+  end
+
   return true
 end
 

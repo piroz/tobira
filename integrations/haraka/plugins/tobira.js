@@ -15,7 +15,9 @@ exports.register = function () {
   const sendHeaders =
     main.send_headers !== undefined ? main.send_headers : false;
 
-  this.client = new TobiraClient(url, { timeout });
+  const apiKey = main.api_key || undefined;
+
+  this.client = new TobiraClient(url, { timeout, apiKey });
   this.threshold = threshold;
   this.rejectSpam = rejectSpam;
   this.sendHeaders = sendHeaders;

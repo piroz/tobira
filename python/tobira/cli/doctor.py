@@ -66,6 +66,19 @@ def _check_api(api_url: str) -> tuple[bool, str]:
         return False, f"API server unreachable: {exc}"
 
 
+def _check_api_key(config: dict[str, Any]) -> tuple[bool, str]:
+    """Check API key authentication configuration."""
+    from tobira.serving.auth import get_api_key
+
+    serving_config = config.get("serving")
+    api_key = get_api_key(serving_config)
+    if api_key is None:
+        return False, "API key not configured (set [serving] api_key or TOBIRA_API_KEY)"
+    if len(api_key) < 16:
+        return False, "API key is too short (recommend at least 16 characters)"
+    return True, "API key configured"
+
+
 def _check_mta_plugins() -> list[tuple[bool, str]]:
     """Check existence of MTA plugin configuration files."""
     results: list[tuple[bool, str]] = []
@@ -102,12 +115,17 @@ def run_checks(
         ok, msg = _check_backend(config)
         results.append((ok, msg))
 
-    # 3. API server (optional)
+    # 3. API key
+    if config is not None:
+        ok, msg = _check_api_key(config)
+        results.append((ok, msg))
+
+    # 4. API server (optional)
     if api_url is not None:
         ok, msg = _check_api(api_url)
         results.append((ok, msg))
 
-    # 4. MTA plugins
+    # 5. MTA plugins
     results.extend(_check_mta_plugins())
 
     return results

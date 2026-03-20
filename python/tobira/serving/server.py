@@ -47,6 +47,7 @@ def create_app(
     ab_test: Optional[dict[str, Any]] = None,
     active_learning: Optional[dict[str, Any]] = None,
     telemetry: Optional[dict[str, Any]] = None,
+    serving: Optional[dict[str, Any]] = None,
 ) -> Any:
     """Create a FastAPI application with the given backend.
 
@@ -84,6 +85,11 @@ def create_app(
             When ``{"enabled": true}`` is set, the ``/health`` endpoint
             includes ``telemetry_enabled`` in its response and heartbeats
             are recorded locally.
+        serving: Optional serving configuration dict.
+            When ``api_key`` is set (or ``TOBIRA_API_KEY`` environment
+            variable is present), Bearer token authentication is enforced
+            on ``/predict``, ``/feedback``, and active-learning endpoints.
+            Health endpoints remain unauthenticated.
 
     Returns:
         A FastAPI application.
@@ -118,6 +124,15 @@ def create_app(
         telemetry_enabled = tel_cfg.enabled
         if tel_cfg.enabled:
             telemetry_collector = TelemetryCollector(tel_cfg)
+
+    from tobira.serving.auth import get_api_key
+
+    api_key = get_api_key(serving)
+    auth_deps: list[Any] = []
+    if api_key:
+        from tobira.serving.auth import create_auth_dependency
+
+        auth_deps = [fastapi.Depends(create_auth_dependency(api_key))]
 
     readiness = ReadinessState()
 
@@ -181,13 +196,18 @@ def create_app(
     # --- Versioned router (v1) ---
     v1_router = fastapi.APIRouter(prefix="/v1", tags=["v1"])
 
+    # --- Protected router (v1, requires auth when api_key is set) ---
+    v1_protected = fastapi.APIRouter(
+        prefix="/v1", tags=["v1"], dependencies=auth_deps,
+    )
+
     if feedback and feedback.get("enabled"):
         from tobira.data.feedback_store import DEFAULT_FEEDBACK_PATH, store_feedback
         from tobira.serving.schemas import FeedbackRequest, FeedbackResponse
 
         feedback_path = feedback.get("store_path", DEFAULT_FEEDBACK_PATH)
 
-        @v1_router.post(
+        @v1_protected.post(
             "/feedback", response_model=FeedbackResponse, tags=["feedback"]
         )
         async def receive_feedback(req: FeedbackRequest) -> FeedbackResponse:
@@ -245,6 +265,7 @@ def create_app(
             "/active-learning/queue",
             response_model=ActiveLearningQueueResponse,
             tags=["active-learning"],
+            dependencies=auth_deps,
         )
         async def al_queue() -> ActiveLearningQueueResponse:
             pending = sampler.get_pending()
@@ -273,6 +294,7 @@ def create_app(
             "/active-learning/label",
             response_model=ActiveLearningLabelResponse,
             tags=["active-learning"],
+            dependencies=auth_deps,
         )
         async def al_label(
             req: ActiveLearningLabelRequest,
@@ -299,12 +321,13 @@ def create_app(
             "/active-learning/stats",
             response_model=ActiveLearningStatsResponse,
             tags=["active-learning"],
+            dependencies=auth_deps,
         )
         async def al_stats() -> ActiveLearningStatsResponse:
             stats = sampler.queue_stats()
             return ActiveLearningStatsResponse(**stats)
 
-    @v1_router.post(
+    @v1_protected.post(
         "/predict",
         response_model=PredictResponse,
         responses={503: {"model": ErrorResponse}},
@@ -439,11 +462,15 @@ def create_app(
         return LivenessResponse(alive=True)
 
     app.include_router(v1_router)
+    app.include_router(v1_protected)
 
     # --- Legacy unversioned routes (aliases to v1 for backward compatibility) ---
-    app.post("/predict", response_model=PredictResponse, tags=["prediction"])(
-        predict
-    )
+    app.post(
+        "/predict",
+        response_model=PredictResponse,
+        tags=["prediction"],
+        dependencies=auth_deps,
+    )(predict)
     app.get(
         "/health",
         response_model=HealthResponse,
@@ -457,9 +484,12 @@ def create_app(
         health_live
     )
     if feedback and feedback.get("enabled"):
-        app.post("/feedback", response_model=FeedbackResponse, tags=["feedback"])(
-            receive_feedback
-        )
+        app.post(
+            "/feedback",
+            response_model=FeedbackResponse,
+            tags=["feedback"],
+            dependencies=auth_deps,
+        )(receive_feedback)
 
     return app
 
@@ -490,6 +520,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
     ab_test_config = config.get("ab_test")
     active_learning_config = config.get("active_learning")
     telemetry_config = config.get("telemetry")
+    serving_config = config.get("serving")
 
     app = create_app(
         backend,
@@ -501,6 +532,7 @@ def main(config_path: str, host: str = "127.0.0.1", port: int = 8000) -> None:
         ab_test=ab_test_config,
         active_learning=active_learning_config,
         telemetry=telemetry_config,
+        serving=serving_config,
     )
 
     ha_config = config.get("ha", {})
