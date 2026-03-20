@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/piroz/tobira/compare/tobira-python-v0.3.0...tobira-python-v0.4.0) (2026-03-20)
+
+
+### Features
+
+* **metrics:** redefine success metrics with local telemetry ([#102](https://github.com/piroz/tobira/issues/102)) ([0ca9929](https://github.com/piroz/tobira/commit/0ca9929283ef85a319889166b04b10476ba1dfc1))
+* **serving:** add Bearer token API key authentication ([#100](https://github.com/piroz/tobira/issues/100)) ([cf4944d](https://github.com/piroz/tobira/commit/cf4944de91632234fcacccf457aa049482d8e39e))
+
+
+### Miscellaneous
+
+* **serving:** error message design guidelines and improvements ([#101](https://github.com/piroz/tobira/issues/101)) ([89e73d3](https://github.com/piroz/tobira/commit/89e73d3cda9b8134333470b02fdc86ed15ad277b))
+
 ## [0.3.0](https://github.com/piroz/tobira/compare/tobira-python-v0.2.0...tobira-python-v0.3.0) (2026-03-18)
 
 
