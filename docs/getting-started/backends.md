@@ -2,13 +2,46 @@
 
 tobira supports multiple inference backends through the `BackendProtocol` abstraction. Choose based on your accuracy, latency, and resource requirements.
 
+## Recommended Base Model
+
+For new deployments, we recommend **DeBERTa-v3** over BERT. DeBERTa-v3 uses disentangled attention and an enhanced mask decoder, achieving higher classification accuracy at comparable model size.
+
+| Model | ID | Parameters | Languages | Notes |
+|-------|-----|-----------|-----------|-------|
+| **mDeBERTa-v3 (recommended)** | `microsoft/mdeberta-v3-base` | 86M | Multilingual | Best for mixed-language email |
+| DeBERTa-v3 Japanese | `ku-nlp/deberta-v3-base-japanese` | 86M | Japanese | Japanese-only environments |
+| BERT Japanese v3 (legacy) | `tohoku-nlp/bert-base-japanese-v3` | 111M | Japanese | Current default for backward compatibility |
+
+The BERT/ONNX backends accept any HuggingFace model name via the `model_name` configuration field. No code changes are needed to switch models — just update your `tobira.toml`.
+
+### Migrating from BERT to DeBERTa-v3
+
+1. Update `model_name` in your `tobira.toml`:
+
+    ```toml
+    [backend]
+    type = "bert"
+    model_name = "microsoft/mdeberta-v3-base"  # was: tohoku-nlp/bert-base-japanese-v3
+    ```
+
+2. If using ONNX, re-export and re-quantize:
+
+    ```bash
+    tobira train --model microsoft/mdeberta-v3-base --export-onnx
+    ```
+
+3. Run `tobira doctor` to verify the new model loads correctly.
+
+!!! note
+    Existing fine-tuned BERT models continue to work. The default `model_name` in code remains `tohoku-nlp/bert-base-japanese-v3` for backward compatibility.
+
 ## Comparison
 
 | Backend | Model Size | Latency | Hardware | Accuracy |
 |---------|-----------|---------|----------|----------|
 | **FastText** | ~10 MB | ~1 ms | CPU only | Medium |
 | **ONNX** | ~110 MB (quantized) | ~30 ms | CPU only | High |
-| **BERT** | ~440 MB | ~200 ms | GPU recommended | High |
+| **BERT/DeBERTa** | ~340-440 MB | ~200 ms | GPU recommended | High |
 | **Ollama** | 1-70 GB | ~500 ms (GPU) | GPU recommended | High |
 | **LLM API** | Remote | ~300 ms | Network | Highest |
 | **Ensemble** | Varies | Varies | Varies | Highest |
@@ -28,25 +61,25 @@ model_path = "/var/lib/tobira/fasttext-spam.bin"
 
 ## ONNX
 
-Quantized BERT model running on ONNX Runtime. Best balance of accuracy and speed on CPU.
+Quantized model running on ONNX Runtime. Best balance of accuracy and speed on CPU. Works with both BERT and DeBERTa-v3 models.
 
 ```toml
 [backend]
 type = "onnx"
 model_path = "/var/lib/tobira/model_int8.onnx"
-model_name = "tohoku-nlp/bert-base-japanese-v3"
+model_name = "microsoft/mdeberta-v3-base"  # recommended; legacy: tohoku-nlp/bert-base-japanese-v3
 ```
 
 **When to use**: Production deployments on CPU-only servers, best accuracy-to-cost ratio.
 
-## BERT (PyTorch)
+## BERT / DeBERTa (PyTorch)
 
-Full BERT model via HuggingFace Transformers. Highest accuracy for fine-tuned models.
+Full Transformer model via HuggingFace Transformers. Highest accuracy for fine-tuned models. Supports any `AutoModelForSequenceClassification`-compatible model including BERT and DeBERTa-v3.
 
 ```toml
 [backend]
 type = "bert"
-model_name = "tohoku-nlp/bert-base-japanese-v3"
+model_name = "microsoft/mdeberta-v3-base"  # recommended; legacy: tohoku-nlp/bert-base-japanese-v3
 device = "cuda"
 ```
 

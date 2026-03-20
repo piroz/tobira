@@ -207,6 +207,85 @@ class TestBertBackend:
         mock_torch.device.assert_called_with("cuda")
 
 
+class TestDeBERTaV3Compatibility:
+    """Verify that BertBackend and OnnxBackend work with DeBERTa-v3 models."""
+
+    @requires_torch
+    @patch("tobira.backends.bert._import_deps")
+    def test_bert_backend_loads_deberta_v3(self, mock_import: MagicMock) -> None:
+        mock_torch = MagicMock()
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.device.return_value = "cpu"
+        MockAutoModel = MagicMock()
+        MockAutoTokenizer = MagicMock()
+        mock_import.return_value = (mock_torch, MockAutoModel, MockAutoTokenizer)
+
+        from tobira.backends.bert import BertBackend
+
+        BertBackend(model_name="microsoft/mdeberta-v3-base", device="cpu")
+        MockAutoModel.from_pretrained.assert_called_once_with(
+            "microsoft/mdeberta-v3-base"
+        )
+        MockAutoTokenizer.from_pretrained.assert_called_once_with(
+            "microsoft/mdeberta-v3-base"
+        )
+
+    @requires_torch
+    @patch("tobira.backends.bert._import_deps")
+    def test_bert_backend_predict_deberta_v3(self, mock_import: MagicMock) -> None:
+        mock_model = MagicMock()
+        mock_logits = _torch.tensor([[1.5, 0.2]])
+        mock_output = MagicMock()
+        mock_output.logits = mock_logits
+        mock_model.return_value = mock_output
+        mock_model.config.id2label = {0: "spam", 1: "ham"}
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.return_value = {"input_ids": _torch.tensor([[1, 2, 3]])}
+
+        MockAutoModel = MagicMock()
+        MockAutoModel.from_pretrained.return_value = mock_model
+        MockAutoTokenizer = MagicMock()
+        MockAutoTokenizer.from_pretrained.return_value = mock_tokenizer
+
+        mock_import.return_value = (_torch, MockAutoModel, MockAutoTokenizer)
+
+        from tobira.backends.bert import BertBackend
+
+        backend = BertBackend(
+            model_name="microsoft/mdeberta-v3-base", device="cpu"
+        )
+        result = backend.predict("spam text")
+
+        assert result.label == "spam"
+        assert "spam" in result.labels
+        assert "ham" in result.labels
+        assert result.labels["spam"] + result.labels["ham"] == pytest.approx(1.0)
+
+    @patch("tobira.backends.onnx.Path.exists", return_value=True)
+    @patch("tobira.backends.onnx._import_deps")
+    def test_onnx_backend_loads_deberta_v3(
+        self, mock_import: MagicMock, _mock_exists: MagicMock
+    ) -> None:
+        mock_ort = MagicMock()
+        MockAutoConfig = MagicMock()
+        MockAutoTokenizer = MagicMock()
+        mock_import.return_value = (mock_ort, np, MockAutoConfig, MockAutoTokenizer)
+
+        from tobira.backends.onnx import OnnxBackend
+
+        OnnxBackend(
+            model_path="/tmp/deberta.onnx",
+            model_name="microsoft/mdeberta-v3-base",
+        )
+        MockAutoTokenizer.from_pretrained.assert_called_once_with(
+            "microsoft/mdeberta-v3-base"
+        )
+        MockAutoConfig.from_pretrained.assert_called_once_with(
+            "microsoft/mdeberta-v3-base"
+        )
+
+
 class TestFactory:
     def test_missing_type_raises(self) -> None:
         with pytest.raises(KeyError, match="type"):

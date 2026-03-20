@@ -48,12 +48,12 @@ type = "fasttext"
 model_path = "/var/lib/tobira/fasttext-spam.bin"
 ```
 
-### BERT (PyTorch)
+### BERT / DeBERTa (PyTorch)
 
 ```toml
 [backend]
 type = "bert"
-model_name = "tohoku-nlp/bert-base-japanese-v3"
+model_name = "microsoft/mdeberta-v3-base"  # recommended; legacy: tohoku-nlp/bert-base-japanese-v3
 device = "cuda"  # or "cpu"
 ```
 
@@ -63,7 +63,7 @@ device = "cuda"  # or "cpu"
 [backend]
 type = "onnx"
 model_path = "/var/lib/tobira/model_int8.onnx"
-model_name = "tohoku-nlp/bert-base-japanese-v3"
+model_name = "microsoft/mdeberta-v3-base"  # recommended; legacy: tohoku-nlp/bert-base-japanese-v3
 ```
 
 ### Two-Stage Filter

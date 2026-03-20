@@ -11,6 +11,7 @@ from typing import Any
 
 from tobira.backends.protocol import BackendProtocol, PredictionResult
 from tobira.evaluation.metrics import MetricsResult, compute_metrics
+from tobira.models import DEFAULT_MODEL, RECOMMENDED_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -355,3 +356,20 @@ def benchmark_to_markdown(results: list[BenchmarkResult]) -> str:
         )
 
     return "\n".join(lines)
+
+
+#: Preset backend configurations for model comparison benchmarks.
+#: Each entry maps a display name to the factory config dict needed
+#: by :func:`tobira.backends.factory.create_backend`.
+BENCHMARK_PRESETS: dict[str, dict[str, str]] = {
+    "BERT (tohoku-nlp/bert-base-japanese-v3)": {
+        "type": "bert",
+        "model_name": DEFAULT_MODEL,
+        "device": "cpu",
+    },
+    "DeBERTa-v3 (microsoft/mdeberta-v3-base)": {
+        "type": "bert",
+        "model_name": RECOMMENDED_MODEL,
+        "device": "cpu",
+    },
+}

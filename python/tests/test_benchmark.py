@@ -297,3 +297,27 @@ class TestBenchmarkPublicAPI:
         assert benchmark_to_markdown is not None
         assert run_benchmark is not None
         assert run_comparative_benchmark is not None
+
+
+class TestBenchmarkPresets:
+    def test_presets_contain_bert_and_deberta(self) -> None:
+        from tobira.evaluation.benchmark import BENCHMARK_PRESETS
+
+        names = list(BENCHMARK_PRESETS.keys())
+        assert any("BERT" in n for n in names)
+        assert any("DeBERTa" in n for n in names)
+
+    def test_presets_have_valid_config(self) -> None:
+        from tobira.evaluation.benchmark import BENCHMARK_PRESETS
+
+        for name, config in BENCHMARK_PRESETS.items():
+            assert "type" in config, f"{name} missing 'type'"
+            assert "model_name" in config, f"{name} missing 'model_name'"
+
+    def test_presets_use_model_constants(self) -> None:
+        from tobira.evaluation.benchmark import BENCHMARK_PRESETS
+        from tobira.models import DEFAULT_MODEL, RECOMMENDED_MODEL
+
+        model_names = [c["model_name"] for c in BENCHMARK_PRESETS.values()]
+        assert DEFAULT_MODEL in model_names
+        assert RECOMMENDED_MODEL in model_names
