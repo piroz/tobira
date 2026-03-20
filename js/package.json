@@ -1,6 +1,6 @@
 {
   "name": "tobira",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "tobira - gateway toolkit",
   "main": "src/index.js",
   "engines": {
