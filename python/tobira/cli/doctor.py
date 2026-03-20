@@ -211,6 +211,233 @@ def _check_monitoring_redis(redis_url: str) -> list[tuple[bool, str]]:
     return results
 
 
+def _check_ab_test(config: dict[str, Any]) -> list[tuple[bool, str]]:
+    """Check A/B test configuration when enabled."""
+    results: list[tuple[bool, str]] = []
+    ab_test = config.get("ab_test", {})
+    if not ab_test.get("enabled"):
+        return results
+
+    variants = ab_test.get("variants")
+    if not variants or not isinstance(variants, list):
+        results.append((False, "[ab_test] no variants configured"))
+        return results
+
+    names = [v.get("name", "") for v in variants if isinstance(v, dict)]
+    if len(names) != len(set(names)):
+        results.append((False, "[ab_test] variant names are not unique"))
+    else:
+        results.append((True, f"[ab_test] {len(names)} variant(s) with unique names"))
+
+    total_weight = sum(
+        v.get("weight", 1.0) for v in variants if isinstance(v, dict)
+    )
+    if total_weight <= 0:
+        results.append((False, "[ab_test] total variant weight must be positive"))
+    else:
+        results.append((True, f"[ab_test] total weight: {total_weight}"))
+
+    for v in variants:
+        if not isinstance(v, dict):
+            continue
+        vname = v.get("name", "<unnamed>")
+        backend_cfg = v.get("backend")
+        if not backend_cfg:
+            results.append((
+                False,
+                f"[ab_test] variant '{vname}' has no backend config",
+            ))
+            continue
+        try:
+            from tobira.backends.factory import create_backend
+
+            create_backend(backend_cfg)
+            results.append((True, f"[ab_test] variant '{vname}' backend OK"))
+        except Exception as exc:
+            results.append((
+                False,
+                f"[ab_test] variant '{vname}' backend failed: {exc}",
+            ))
+
+    return results
+
+
+def _check_active_learning(config: dict[str, Any]) -> list[tuple[bool, str]]:
+    """Check Active Learning configuration when enabled."""
+    results: list[tuple[bool, str]] = []
+    al = config.get("active_learning", {})
+    if not al.get("enabled"):
+        return results
+
+    queue_path = al.get(
+        "queue_path", "/var/lib/tobira/active_learning_queue.jsonl"
+    )
+    ok, msg = _check_path_writable(queue_path, "[active_learning] queue_path")
+    results.append((ok, msg))
+
+    strategy = al.get("strategy", "entropy")
+    valid_strategies = {"entropy", "margin", "least_confidence"}
+    if strategy not in valid_strategies:
+        results.append((
+            False,
+            f"[active_learning] invalid strategy '{strategy}' "
+            f"(must be one of {sorted(valid_strategies)})",
+        ))
+    else:
+        results.append((True, f"[active_learning] strategy: {strategy}"))
+
+    threshold = al.get("uncertainty_threshold", 0.3)
+    if not isinstance(threshold, (int, float)) or threshold < 0 or threshold > 1:
+        results.append((
+            False,
+            f"[active_learning] uncertainty_threshold must be between 0 and 1, "
+            f"got {threshold}",
+        ))
+    else:
+        results.append((True, f"[active_learning] uncertainty_threshold: {threshold}"))
+
+    max_queue_size = al.get("max_queue_size", 1000)
+    if not isinstance(max_queue_size, int) or max_queue_size <= 0:
+        results.append((
+            False,
+            f"[active_learning] max_queue_size must be a positive integer, "
+            f"got {max_queue_size}",
+        ))
+    else:
+        results.append((True, f"[active_learning] max_queue_size: {max_queue_size}"))
+
+    return results
+
+
+def _check_notification(config: dict[str, Any]) -> list[tuple[bool, str]]:
+    """Check notification channel configuration."""
+    results: list[tuple[bool, str]] = []
+    notification = config.get("notification", {})
+    if not notification.get("enabled"):
+        return results
+
+    channels = notification.get("channels", [])
+    if not channels:
+        results.append((False, "[notification] enabled but no channels configured"))
+        return results
+
+    for i, ch in enumerate(channels):
+        if not isinstance(ch, dict):
+            continue
+        ch_type = ch.get("type", "")
+        prefix = f"[notification] channel[{i}] ({ch_type})"
+
+        if ch_type in ("slack", "teams"):
+            webhook_url = ch.get("webhook_url", "")
+            if not webhook_url:
+                results.append((False, f"{prefix} webhook_url is empty"))
+            elif (
+                isinstance(webhook_url, str)
+                and webhook_url.startswith("${")
+                and webhook_url.endswith("}")
+            ):
+                env_name = webhook_url[2:-1]
+                if env_name not in os.environ:
+                    results.append((
+                        False,
+                        f"{prefix} env var {env_name} not set "
+                        f"(referenced as {webhook_url})",
+                    ))
+                else:
+                    results.append((True, f"{prefix} webhook_url OK"))
+            else:
+                results.append((True, f"{prefix} webhook_url OK"))
+        elif ch_type == "email":
+            missing: list[str] = []
+            for field in ("smtp_host", "from_addr", "to_addrs"):
+                val = ch.get(field)
+                if not val:
+                    missing.append(field)
+                elif field == "to_addrs" and isinstance(val, list) and len(val) == 0:
+                    missing.append(field)
+            if missing:
+                results.append((
+                    False,
+                    f"{prefix} missing required fields: {', '.join(missing)}",
+                ))
+            else:
+                results.append((True, f"{prefix} config OK"))
+
+            # Check env var references in email fields
+            for field in ("username", "password"):
+                val = ch.get(field, "")
+                if isinstance(val, str) and val.startswith("${") and val.endswith("}"):
+                    env_name = val[2:-1]
+                    if env_name not in os.environ:
+                        results.append((
+                            False,
+                            f"{prefix} env var {env_name} not set "
+                            f"(referenced in {field} as {val})",
+                        ))
+        else:
+            if ch_type:
+                results.append((False, f"{prefix} unknown channel type"))
+
+    return results
+
+
+def _check_retrain(config: dict[str, Any]) -> list[tuple[bool, str]]:
+    """Check retrain trigger configuration."""
+    results: list[tuple[bool, str]] = []
+    retrain = config.get("retrain", {})
+    if not retrain.get("enabled", True):
+        return results
+
+    # Only validate if the section is explicitly present
+    if "retrain" not in config:
+        return results
+
+    action = retrain.get("action", "log")
+    valid_actions = {"log", "script", "webhook"}
+    if action not in valid_actions:
+        results.append((
+            False,
+            f"[retrain] invalid action '{action}' "
+            f"(must be one of {sorted(valid_actions)})",
+        ))
+        return results
+    results.append((True, f"[retrain] action: {action}"))
+
+    if action == "script":
+        script_path = retrain.get("script_path", "")
+        if not script_path:
+            results.append((
+                False,
+                "[retrain] action is 'script' but script_path is empty",
+            ))
+        else:
+            p = Path(script_path)
+            if not p.exists():
+                results.append((
+                    False,
+                    f"[retrain] script_path not found: {script_path}",
+                ))
+            elif not os.access(p, os.X_OK):
+                results.append((
+                    False,
+                    f"[retrain] script_path not executable: {script_path}",
+                ))
+            else:
+                results.append((True, f"[retrain] script_path OK: {script_path}"))
+
+    elif action == "webhook":
+        webhook_url = retrain.get("webhook_url", "")
+        if not webhook_url:
+            results.append((
+                False,
+                "[retrain] action is 'webhook' but webhook_url is empty",
+            ))
+        else:
+            results.append((True, "[retrain] webhook_url configured"))
+
+    return results
+
+
 def run_checks(
     config_path: str,
     api_url: str | None = None,
@@ -280,7 +507,23 @@ def run_checks(
         if store_config:
             results.extend(_check_store(store_config))
 
-    # 9. MTA plugins
+    # 9. A/B test configuration
+    if config is not None:
+        results.extend(_check_ab_test(config))
+
+    # 10. Active Learning configuration
+    if config is not None:
+        results.extend(_check_active_learning(config))
+
+    # 11. Notification channels
+    if config is not None:
+        results.extend(_check_notification(config))
+
+    # 12. Retrain trigger configuration
+    if config is not None:
+        results.extend(_check_retrain(config))
+
+    # 13. MTA plugins
     results.extend(_check_mta_plugins())
 
     return results
