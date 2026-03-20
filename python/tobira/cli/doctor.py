@@ -381,6 +381,84 @@ def _check_notification(config: dict[str, Any]) -> list[tuple[bool, str]]:
     return results
 
 
+def _check_telemetry_storage(config: dict[str, Any]) -> tuple[bool, str]:
+    """Check that telemetry storage_dir is writable when telemetry is enabled."""
+    telemetry = config.get("telemetry", {})
+    if not telemetry.get("enabled"):
+        return True, "[telemetry] disabled, skipping storage_dir check"
+
+    storage_dir = telemetry.get("storage_dir", "/var/lib/tobira/telemetry")
+    p = Path(storage_dir)
+    if not p.exists():
+        return False, f"[telemetry] storage_dir does not exist: {storage_dir}"
+    if not os.access(p, os.W_OK):
+        return False, f"[telemetry] storage_dir is not writable: {storage_dir}"
+    return True, f"[telemetry] storage_dir writable: {storage_dir}"
+
+
+def _check_header_analysis_weight(config: dict[str, Any]) -> tuple[bool, str]:
+    """Check that header_analysis weight is in 0.0-1.0 range when enabled."""
+    ha = config.get("header_analysis", {})
+    if not ha.get("enabled"):
+        return True, "[header_analysis] disabled, skipping weight check"
+
+    weight = ha.get("weight", 0.3)
+    if not isinstance(weight, (int, float)) or weight < 0.0 or weight > 1.0:
+        return False, (
+            f"[header_analysis] weight must be between 0.0 and 1.0, got {weight}"
+        )
+    return True, f"[header_analysis] weight: {weight}"
+
+
+def _check_ai_detection_threshold(config: dict[str, Any]) -> tuple[bool, str]:
+    """Check that ai_detection threshold is in 0.0-1.0 range when enabled."""
+    ai = config.get("ai_detection", {})
+    if not ai.get("enabled"):
+        return True, "[ai_detection] disabled, skipping threshold check"
+
+    threshold = ai.get("threshold", 0.65)
+    if not isinstance(threshold, (int, float)) or threshold < 0.0 or threshold > 1.0:
+        return False, (
+            f"[ai_detection] threshold must be between 0.0 and 1.0, got {threshold}"
+        )
+    return True, f"[ai_detection] threshold: {threshold}"
+
+
+def _check_model_path(config: dict[str, Any]) -> list[tuple[bool, str]]:
+    """Check backend model file existence with specific error messages.
+
+    For fasttext and onnx backends, validates that ``model_path`` exists
+    before the backend is initialised, providing a targeted error message
+    instead of the generic 'backend initialisation failed' error.
+    """
+    results: list[tuple[bool, str]] = []
+    backend = config.get("backend", {})
+    backend_type = backend.get("backend", "")
+    model_path = backend.get("model_path", "")
+
+    if backend_type == "fasttext" and model_path:
+        if not Path(model_path).exists():
+            results.append((
+                False,
+                f"[backend] fasttext model file not found: {model_path}",
+            ))
+        else:
+            results.append((
+                True, f"[backend] fasttext model file exists: {model_path}"
+            ))
+
+    elif backend_type == "onnx" and model_path:
+        if not Path(model_path).exists():
+            results.append((
+                False,
+                f"[backend] ONNX model file not found: {model_path}",
+            ))
+        else:
+            results.append((True, f"[backend] ONNX model file exists: {model_path}"))
+
+    return results
+
+
 def _check_retrain(config: dict[str, Any]) -> list[tuple[bool, str]]:
     """Check retrain trigger configuration."""
     results: list[tuple[bool, str]] = []
@@ -457,7 +535,11 @@ def run_checks(
     ok, msg, config = _check_config(config_path)
     results.append((ok, msg))
 
-    # 2. Backend
+    # 2. Backend model file existence (before full backend init)
+    if config is not None:
+        results.extend(_check_model_path(config))
+
+    # 3. Backend
     if config is not None:
         ok, msg = _check_backend(config)
         results.append((ok, msg))
@@ -523,7 +605,22 @@ def run_checks(
     if config is not None:
         results.extend(_check_retrain(config))
 
-    # 13. MTA plugins
+    # 13. Telemetry storage_dir writability
+    if config is not None:
+        ok, msg = _check_telemetry_storage(config)
+        results.append((ok, msg))
+
+    # 14. Header analysis weight range
+    if config is not None:
+        ok, msg = _check_header_analysis_weight(config)
+        results.append((ok, msg))
+
+    # 15. AI detection threshold range
+    if config is not None:
+        ok, msg = _check_ai_detection_threshold(config)
+        results.append((ok, msg))
+
+    # 16. MTA plugins
     results.extend(_check_mta_plugins())
 
     return results

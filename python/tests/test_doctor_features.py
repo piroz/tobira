@@ -10,9 +10,207 @@ from unittest.mock import patch
 from tobira.cli.doctor import (
     _check_ab_test,
     _check_active_learning,
+    _check_ai_detection_threshold,
+    _check_header_analysis_weight,
+    _check_model_path,
     _check_notification,
     _check_retrain,
+    _check_telemetry_storage,
 )
+
+# ── Telemetry storage_dir check ───────────────────────────────
+
+
+class TestCheckTelemetryStorage:
+    def test_disabled(self) -> None:
+        ok, msg = _check_telemetry_storage({})
+        assert ok is True
+        assert "disabled" in msg
+
+    def test_enabled_dir_exists_writable(self, tmp_path: Path) -> None:
+        config = {"telemetry": {"enabled": True, "storage_dir": str(tmp_path)}}
+        ok, msg = _check_telemetry_storage(config)
+        assert ok is True
+        assert "writable" in msg
+
+    def test_enabled_dir_not_exists(self, tmp_path: Path) -> None:
+        config = {
+            "telemetry": {
+                "enabled": True,
+                "storage_dir": str(tmp_path / "nonexistent"),
+            },
+        }
+        ok, msg = _check_telemetry_storage(config)
+        assert ok is False
+        assert "does not exist" in msg
+
+    def test_enabled_dir_not_writable(self, tmp_path: Path) -> None:
+        read_only = tmp_path / "readonly"
+        read_only.mkdir()
+        read_only.chmod(0o444)
+        try:
+            config = {
+                "telemetry": {"enabled": True, "storage_dir": str(read_only)},
+            }
+            ok, msg = _check_telemetry_storage(config)
+            assert ok is False
+            assert "not writable" in msg
+        finally:
+            read_only.chmod(0o755)
+
+
+# ── Header analysis weight check ─────────────────────────────
+
+
+class TestCheckHeaderAnalysisWeight:
+    def test_disabled(self) -> None:
+        ok, msg = _check_header_analysis_weight({})
+        assert ok is True
+        assert "disabled" in msg
+
+    def test_valid_weight(self) -> None:
+        config = {"header_analysis": {"enabled": True, "weight": 0.5}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is True
+
+    def test_default_weight(self) -> None:
+        config = {"header_analysis": {"enabled": True}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is True
+        assert "0.3" in msg
+
+    def test_boundary_zero(self) -> None:
+        config = {"header_analysis": {"enabled": True, "weight": 0.0}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is True
+
+    def test_boundary_one(self) -> None:
+        config = {"header_analysis": {"enabled": True, "weight": 1.0}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is True
+
+    def test_negative_weight(self) -> None:
+        config = {"header_analysis": {"enabled": True, "weight": -0.1}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is False
+        assert "must be between" in msg
+
+    def test_weight_above_one(self) -> None:
+        config = {"header_analysis": {"enabled": True, "weight": 1.5}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is False
+        assert "must be between" in msg
+
+    def test_non_numeric_weight(self) -> None:
+        config = {"header_analysis": {"enabled": True, "weight": "high"}}
+        ok, msg = _check_header_analysis_weight(config)
+        assert ok is False
+        assert "must be between" in msg
+
+
+# ── AI detection threshold check ─────────────────────────────
+
+
+class TestCheckAiDetectionThreshold:
+    def test_disabled(self) -> None:
+        ok, msg = _check_ai_detection_threshold({})
+        assert ok is True
+        assert "disabled" in msg
+
+    def test_valid_threshold(self) -> None:
+        config = {"ai_detection": {"enabled": True, "threshold": 0.7}}
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is True
+
+    def test_default_threshold(self) -> None:
+        config = {"ai_detection": {"enabled": True}}
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is True
+        assert "0.65" in msg
+
+    def test_boundary_zero(self) -> None:
+        config = {"ai_detection": {"enabled": True, "threshold": 0.0}}
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is True
+
+    def test_boundary_one(self) -> None:
+        config = {"ai_detection": {"enabled": True, "threshold": 1.0}}
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is True
+
+    def test_negative_threshold(self) -> None:
+        config = {"ai_detection": {"enabled": True, "threshold": -0.5}}
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is False
+        assert "must be between" in msg
+
+    def test_threshold_above_one(self) -> None:
+        config = {"ai_detection": {"enabled": True, "threshold": 2.0}}
+        ok, msg = _check_ai_detection_threshold(config)
+        assert ok is False
+        assert "must be between" in msg
+
+
+# ── Model path check ─────────────────────────────────────────
+
+
+class TestCheckModelPath:
+    def test_no_backend(self) -> None:
+        results = _check_model_path({})
+        assert results == []
+
+    def test_unknown_backend(self) -> None:
+        config = {"backend": {"backend": "dummy"}}
+        results = _check_model_path(config)
+        assert results == []
+
+    def test_fasttext_exists(self, tmp_path: Path) -> None:
+        model = tmp_path / "model.bin"
+        model.write_bytes(b"fake")
+        config = {"backend": {"backend": "fasttext", "model_path": str(model)}}
+        results = _check_model_path(config)
+        assert len(results) == 1
+        assert results[0][0] is True
+        assert "fasttext model file exists" in results[0][1]
+
+    def test_fasttext_missing(self) -> None:
+        config = {
+            "backend": {
+                "backend": "fasttext",
+                "model_path": "/nonexistent/model.bin",
+            },
+        }
+        results = _check_model_path(config)
+        assert len(results) == 1
+        assert results[0][0] is False
+        assert "fasttext model file not found" in results[0][1]
+
+    def test_onnx_exists(self, tmp_path: Path) -> None:
+        model = tmp_path / "model.onnx"
+        model.write_bytes(b"fake")
+        config = {"backend": {"backend": "onnx", "model_path": str(model)}}
+        results = _check_model_path(config)
+        assert len(results) == 1
+        assert results[0][0] is True
+        assert "ONNX model file exists" in results[0][1]
+
+    def test_onnx_missing(self) -> None:
+        config = {
+            "backend": {
+                "backend": "onnx",
+                "model_path": "/nonexistent/model.onnx",
+            },
+        }
+        results = _check_model_path(config)
+        assert len(results) == 1
+        assert results[0][0] is False
+        assert "ONNX model file not found" in results[0][1]
+
+    def test_no_model_path(self) -> None:
+        config = {"backend": {"backend": "fasttext"}}
+        results = _check_model_path(config)
+        assert results == []
+
 
 # ── A/B test checks ──────────────────────────────────────────
 
