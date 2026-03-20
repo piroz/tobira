@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/piroz/tobira/compare/tobira-js-v0.3.0...tobira-js-v0.4.0) (2026-03-20)
+
+
+### Features
+
+* **serving:** add Bearer token API key authentication ([#100](https://github.com/piroz/tobira/issues/100)) ([cf4944d](https://github.com/piroz/tobira/commit/cf4944de91632234fcacccf457aa049482d8e39e))
+
 ## [0.3.0](https://github.com/piroz/tobira/compare/tobira-js-v0.2.0...tobira-js-v0.3.0) (2026-03-18)
 
 
