@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/velocitylabo/tobira/compare/tobira-python-v0.5.0...tobira-python-v0.6.0) (2026-03-21)
+
+
+### Features
+
+* **explainability:** add attention-based token attribution to /predict ([#119](https://github.com/velocitylabo/tobira/issues/119)) ([bd25f40](https://github.com/velocitylabo/tobira/commit/bd25f40ca62af7b0500765bccd3c72045b3cf7bf))
+
+
+### Miscellaneous
+
+* migrate GitHub org from piroz to velocitylabo ([#89](https://github.com/velocitylabo/tobira/issues/89)) ([f63e46e](https://github.com/velocitylabo/tobira/commit/f63e46ec9f57f6251ceb076091754d8e99045e57))
+
 ## [0.5.0](https://github.com/velocitylabo/tobira/compare/tobira-python-v0.4.0...tobira-python-v0.5.0) (2026-03-21)
 
 
