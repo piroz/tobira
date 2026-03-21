@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/velocitylabo/tobira/compare/tobira-js-v0.4.0...tobira-js-v0.5.0) (2026-03-21)
+
+
+### Features
+
+* **explainability:** add attention-based token attribution to /predict ([#119](https://github.com/velocitylabo/tobira/issues/119)) ([bd25f40](https://github.com/velocitylabo/tobira/commit/bd25f40ca62af7b0500765bccd3c72045b3cf7bf))
+
+
+### Miscellaneous
+
+* **deps-dev:** bump eslint from 10.0.3 to 10.1.0 in /js ([#93](https://github.com/velocitylabo/tobira/issues/93)) ([e7903af](https://github.com/velocitylabo/tobira/commit/e7903af115f92af8e8b72a71c779c7ca26593bbb))
+* migrate GitHub org from piroz to velocitylabo ([#89](https://github.com/velocitylabo/tobira/issues/89)) ([f63e46e](https://github.com/velocitylabo/tobira/commit/f63e46ec9f57f6251ceb076091754d8e99045e57))
+
 ## [0.4.0](https://github.com/velocitylabo/tobira/compare/tobira-js-v0.3.0...tobira-js-v0.4.0) (2026-03-20)
 
 
