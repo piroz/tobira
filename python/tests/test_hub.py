@@ -30,9 +30,9 @@ class TestGenerateModelCard:
 
         from tobira.hub import generate_model_card
 
-        content = generate_model_card(repo_id="piroz/tobira-spam-bert-ja")
+        content = generate_model_card(repo_id="velocitylabo-org/tobira-spam-bert-ja")
 
-        assert "piroz/tobira-spam-bert-ja" in content
+        assert "velocitylabo-org/tobira-spam-bert-ja" in content
         assert "tohoku-nlp/bert-base-japanese-v3" in content
         assert "text-classification" not in "" or True  # card_data handles tags
 
@@ -47,7 +47,7 @@ class TestGenerateModelCard:
 
         metrics = {"f1": 0.95, "accuracy": 0.96}
         content = generate_model_card(
-            repo_id="piroz/tobira-spam-bert-ja", metrics=metrics
+            repo_id="velocitylabo-org/tobira-spam-bert-ja", metrics=metrics
         )
 
         assert "Evaluation Results" in content
@@ -63,7 +63,7 @@ class TestGenerateModelCard:
 
         from tobira.hub import generate_model_card
 
-        content = generate_model_card(repo_id="piroz/tobira-spam-bert-ja")
+        content = generate_model_card(repo_id="velocitylabo-org/tobira-spam-bert-ja")
 
         assert "Evaluation Results" not in content
 
@@ -87,16 +87,16 @@ class TestPushToHub:
 
         url = push_to_hub(
             model_dir=model_dir,
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             token="test-token",
         )
 
-        assert url == "https://huggingface.co/piroz/tobira-spam-bert-ja"
+        assert url == "https://huggingface.co/velocitylabo-org/tobira-spam-bert-ja"
         mock_api.create_repo.assert_called_once_with(
-            repo_id="piroz/tobira-spam-bert-ja", private=False, exist_ok=True
+            repo_id="velocitylabo-org/tobira-spam-bert-ja", private=False, exist_ok=True
         )
         mock_api.upload_folder.assert_called_once_with(
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             folder_path=str(model_dir),
         )
         # Model card should be written
@@ -118,12 +118,12 @@ class TestPushToHub:
 
         push_to_hub(
             model_dir=model_dir,
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             private=True,
         )
 
         mock_api.create_repo.assert_called_once_with(
-            repo_id="piroz/tobira-spam-bert-ja", private=True, exist_ok=True
+            repo_id="velocitylabo-org/tobira-spam-bert-ja", private=True, exist_ok=True
         )
 
     def test_push_nonexistent_dir_raises(self) -> None:
@@ -132,7 +132,7 @@ class TestPushToHub:
         with pytest.raises(FileNotFoundError, match="Model directory not found"):
             push_to_hub(
                 model_dir="/nonexistent/path",
-                repo_id="piroz/tobira-spam-bert-ja",
+                repo_id="velocitylabo-org/tobira-spam-bert-ja",
             )
 
     @patch("tobira.hub._import_hub_deps")
@@ -151,7 +151,7 @@ class TestPushToHub:
 
         push_to_hub(
             model_dir=model_dir,
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             metrics={"f1": 0.95},
         )
 
@@ -172,13 +172,13 @@ class TestPullFromHub:
 
         local_dir = tmp_path / "output"
         result = pull_from_hub(
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             local_dir=local_dir,
         )
 
         assert result == download_dir
         mock_api.snapshot_download.assert_called_once_with(
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             local_dir=str(local_dir),
             revision=None,
         )
@@ -193,13 +193,13 @@ class TestPullFromHub:
         from tobira.hub import pull_from_hub
 
         pull_from_hub(
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             local_dir=tmp_path,
             revision="v1.0",
         )
 
         mock_api.snapshot_download.assert_called_once_with(
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             local_dir=str(tmp_path),
             revision="v1.0",
         )
@@ -217,7 +217,7 @@ class TestPullFromHub:
         from tobira.hub import pull_from_hub
 
         pull_from_hub(
-            repo_id="piroz/tobira-spam-bert-ja",
+            repo_id="velocitylabo-org/tobira-spam-bert-ja",
             local_dir=local_dir,
         )
 
@@ -252,7 +252,7 @@ class TestHubPushParser:
 
         parser = build_parser()
         args = parser.parse_args([
-            "hub-push", "/tmp/model", "--repo-id", "piroz/tobira-spam-bert-ja"
+            "hub-push", "/tmp/model", "--repo-id", "velocitylabo-org/tobira-spam-bert-ja"
         ])
         assert args.command == "hub-push"
 
@@ -261,10 +261,10 @@ class TestHubPushParser:
 
         parser = build_parser()
         args = parser.parse_args([
-            "hub-push", "/tmp/model", "--repo-id", "piroz/tobira-spam-bert-ja"
+            "hub-push", "/tmp/model", "--repo-id", "velocitylabo-org/tobira-spam-bert-ja"
         ])
         assert args.model_dir == "/tmp/model"
-        assert args.repo_id == "piroz/tobira-spam-bert-ja"
+        assert args.repo_id == "velocitylabo-org/tobira-spam-bert-ja"
         assert args.token is None
         assert args.private is False
         assert args.metrics is None
@@ -293,7 +293,7 @@ class TestHubPullParser:
 
         parser = build_parser()
         args = parser.parse_args([
-            "hub-pull", "piroz/tobira-spam-bert-ja", "--local-dir", "/tmp/model"
+            "hub-pull", "velocitylabo-org/tobira-spam-bert-ja", "--local-dir", "/tmp/model"
         ])
         assert args.command == "hub-pull"
 
@@ -302,9 +302,9 @@ class TestHubPullParser:
 
         parser = build_parser()
         args = parser.parse_args([
-            "hub-pull", "piroz/tobira-spam-bert-ja", "--local-dir", "/tmp/model"
+            "hub-pull", "velocitylabo-org/tobira-spam-bert-ja", "--local-dir", "/tmp/model"
         ])
-        assert args.repo_id == "piroz/tobira-spam-bert-ja"
+        assert args.repo_id == "velocitylabo-org/tobira-spam-bert-ja"
         assert args.local_dir == "/tmp/model"
         assert args.token is None
         assert args.revision is None
@@ -314,7 +314,7 @@ class TestHubPullParser:
 
         parser = build_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["hub-pull", "piroz/tobira-spam-bert-ja"])
+            parser.parse_args(["hub-pull", "velocitylabo-org/tobira-spam-bert-ja"])
 
     def test_hub_pull_help_exits_with_0(self) -> None:
         from tobira.cli import build_parser
@@ -332,7 +332,7 @@ class TestHubPushDispatch:
 
         mock_run.return_value = 0
         result = main([
-            "hub-push", "/tmp/model", "--repo-id", "piroz/tobira-spam-bert-ja"
+            "hub-push", "/tmp/model", "--repo-id", "velocitylabo-org/tobira-spam-bert-ja"
         ])
 
         assert result == 0
@@ -346,7 +346,7 @@ class TestHubPullDispatch:
 
         mock_run.return_value = 0
         result = main([
-            "hub-pull", "piroz/tobira-spam-bert-ja", "--local-dir", "/tmp/model"
+            "hub-pull", "velocitylabo-org/tobira-spam-bert-ja", "--local-dir", "/tmp/model"
         ])
 
         assert result == 0
@@ -363,10 +363,10 @@ class TestHubPushRun:
         model_dir = tmp_path / "model"
         model_dir.mkdir()
 
-        mock_push.return_value = "https://huggingface.co/piroz/tobira-spam-bert-ja"
+        mock_push.return_value = "https://huggingface.co/velocitylabo-org/tobira-spam-bert-ja"
         result = main([
             "hub-push", str(model_dir),
-            "--repo-id", "piroz/tobira-spam-bert-ja",
+            "--repo-id", "velocitylabo-org/tobira-spam-bert-ja",
         ])
 
         assert result == 0
@@ -381,7 +381,7 @@ class TestHubPushRun:
 
         result = main([
             "hub-push", "/nonexistent",
-            "--repo-id", "piroz/tobira-spam-bert-ja",
+            "--repo-id", "velocitylabo-org/tobira-spam-bert-ja",
         ])
 
         assert result == 1
@@ -400,10 +400,10 @@ class TestHubPushRun:
         metrics_file = tmp_path / "metrics.json"
         metrics_file.write_text('{"f1": 0.95}', encoding="utf-8")
 
-        mock_push.return_value = "https://huggingface.co/piroz/tobira-spam-bert-ja"
+        mock_push.return_value = "https://huggingface.co/velocitylabo-org/tobira-spam-bert-ja"
         result = main([
             "hub-push", str(model_dir),
-            "--repo-id", "piroz/tobira-spam-bert-ja",
+            "--repo-id", "velocitylabo-org/tobira-spam-bert-ja",
             "--metrics", str(metrics_file),
         ])
 
@@ -418,7 +418,7 @@ class TestHubPushRun:
 
         result = main([
             "hub-push", "/tmp/model",
-            "--repo-id", "piroz/tobira-spam-bert-ja",
+            "--repo-id", "velocitylabo-org/tobira-spam-bert-ja",
             "--metrics", "/nonexistent/metrics.json",
         ])
 
@@ -439,7 +439,7 @@ class TestHubPullRun:
 
         mock_pull.return_value = tmp_path / "downloaded"
         result = main([
-            "hub-pull", "piroz/tobira-spam-bert-ja",
+            "hub-pull", "velocitylabo-org/tobira-spam-bert-ja",
             "--local-dir", str(tmp_path / "output"),
         ])
 
@@ -457,7 +457,7 @@ class TestHubPullRun:
         from tobira.cli import main
 
         result = main([
-            "hub-pull", "piroz/tobira-spam-bert-ja",
+            "hub-pull", "velocitylabo-org/tobira-spam-bert-ja",
             "--local-dir", "/tmp/output",
         ])
 

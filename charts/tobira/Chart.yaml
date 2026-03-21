@@ -9,8 +9,8 @@ keywords:
   - email
   - machine-learning
   - fastapi
-home: https://github.com/piroz/tobira
+home: https://github.com/velocitylabo-org/tobira
 sources:
-  - https://github.com/piroz/tobira
+  - https://github.com/velocitylabo-org/tobira
 maintainers:
-  - name: piroz
+  - name: velocitylabo-org

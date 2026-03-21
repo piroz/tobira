@@ -1,8 +1,8 @@
 site_name: tobira
 site_description: ML-powered email spam detection toolkit with MTA integrations
-site_url: https://piroz.github.io/tobira
-repo_url: https://github.com/piroz/tobira
-repo_name: piroz/tobira
+site_url: https://velocitylabo-org.github.io/tobira
+repo_url: https://github.com/velocitylabo-org/tobira
+repo_name: velocitylabo-org/tobira
 
 theme:
   name: material

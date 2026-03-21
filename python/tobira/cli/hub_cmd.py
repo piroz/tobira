@@ -30,7 +30,7 @@ def _register_push(subparsers: "argparse._SubParsersAction[Any]") -> None:
     parser.add_argument(
         "--repo-id",
         required=True,
-        help="HuggingFace Hub repository ID (e.g. piroz/tobira-spam-bert-ja)",
+        help="HuggingFace Hub repository ID (e.g. velocitylabo-org/tobira-spam-bert-ja)",
     )
     parser.add_argument(
         "--token",
@@ -76,7 +76,7 @@ def _register_pull(subparsers: "argparse._SubParsersAction[Any]") -> None:
     )
     parser.add_argument(
         "repo_id",
-        help="HuggingFace Hub repository ID (e.g. piroz/tobira-spam-bert-ja)",
+        help="HuggingFace Hub repository ID (e.g. velocitylabo-org/tobira-spam-bert-ja)",
     )
     parser.add_argument(
         "--local-dir",
