@@ -39,6 +39,9 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - tables
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - attr_list
   - def_list
   - toc:
@@ -59,3 +62,4 @@ nav:
   - CLI Reference: cli.md
   - API Reference: api.md
   - Deployment Guide: getting-started/phased-rollout.md
+  - Pricing: pricing.md

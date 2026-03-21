@@ -35,6 +35,7 @@ MTA (Postfix, etc.)
 - [CLI Reference](cli.md) — All CLI subcommands
 - [API Reference](api.md) — HTTP endpoint documentation
 - [Deployment Guide](getting-started/phased-rollout.md) — Phased rollout strategy
+- [Pricing](pricing.md) — Community, Enterprise, and Cloud plans
 
 ## Installation
 
