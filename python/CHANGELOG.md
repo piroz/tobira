@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/piroz/tobira/compare/tobira-python-v0.4.0...tobira-python-v0.5.0) (2026-03-21)
+
+
+### Features
+
+* **backends:** add few-shot prompting support for LLM backends ([#105](https://github.com/piroz/tobira/issues/105)) ([43c7db5](https://github.com/piroz/tobira/commit/43c7db5ff962e073aeb0355d6b90fafb05545af2))
+* **cli:** add auxiliary config validation to doctor command ([#113](https://github.com/piroz/tobira/issues/113)) ([193ae1a](https://github.com/piroz/tobira/commit/193ae1adf77b9138612c8d1a0db25c907d0a4793))
+* **cli:** add feature configuration checks to doctor command ([#112](https://github.com/piroz/tobira/issues/112)) ([9ab68c6](https://github.com/piroz/tobira/commit/9ab68c66292758f964454595e0556967541749e6))
+* **cli:** add infrastructure checks to doctor command ([#110](https://github.com/piroz/tobira/issues/110)) ([1b276d2](https://github.com/piroz/tobira/commit/1b276d26b8ee9b10c7918e4e0dbf25ebd2ff111a))
+* **models:** recommend DeBERTa-v3 as preferred base model ([#106](https://github.com/piroz/tobira/issues/106)) ([f2073db](https://github.com/piroz/tobira/commit/f2073dbfcc262cf7f680c763adaf66f4692d9e51))
+
+
+### Tests
+
+* **cli:** add tests for doctor auxiliary config validation checks ([#114](https://github.com/piroz/tobira/issues/114)) ([7068427](https://github.com/piroz/tobira/commit/70684273b90a82bae787e5704521ff8c0c9e19c0))
+
 ## [0.4.0](https://github.com/piroz/tobira/compare/tobira-python-v0.3.0...tobira-python-v0.4.0) (2026-03-20)
 
 
