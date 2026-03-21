@@ -30,7 +30,8 @@ def generate_model_card(
     """Generate a model card (README.md) for a tobira spam classifier.
 
     Args:
-        repo_id: HuggingFace Hub repository ID (e.g. ``piroz/tobira-spam-bert-ja``).
+        repo_id: HuggingFace Hub repository ID
+            (e.g. ``velocitylabo/tobira-spam-bert-ja``).
         language: Language code for the model.
         license_name: License identifier.
         base_model: Base model used for fine-tuning.

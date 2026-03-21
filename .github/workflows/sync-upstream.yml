@@ -20,7 +20,7 @@ jobs:
 
       - name: Sync upstream main
         run: |
-          git remote add upstream https://github.com/piroz/tobira.git
+          git remote add upstream https://github.com/velocitylabo/tobira.git
           git fetch upstream main
           git merge upstream/main --ff-only
           git push origin main
