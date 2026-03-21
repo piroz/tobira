@@ -106,6 +106,7 @@ def create_app(
         PredictRequest,
         PredictResponse,
         ReadinessResponse,
+        TokenAttributionInfo,
     )
 
     ai_detector = None
@@ -345,10 +346,18 @@ def create_app(
                 ),
             )
         variant_name: Optional[str] = None
+        explain_kwargs: dict[str, bool] = {}
+        if req.explain:
+            explain_kwargs["explain"] = True
+
         if app.state.ab_router is not None:
             result, variant_name = app.state.ab_router.predict(req.text)
         else:
-            result = app.state.backend.predict(req.text)
+            try:
+                result = app.state.backend.predict(req.text, **explain_kwargs)
+            except TypeError:
+                # Backend does not support explain parameter
+                result = app.state.backend.predict(req.text)
 
         header_score: Optional[float] = None
         final_score = result.score
@@ -414,6 +423,13 @@ def create_app(
                 indicators=ai_result.indicators,
             )
 
+        explanations_info: Optional[list[TokenAttributionInfo]] = None
+        if result.explanations is not None:
+            explanations_info = [
+                TokenAttributionInfo(token=a.token, score=a.score)
+                for a in result.explanations
+            ]
+
         return PredictResponse(
             label=final_label,
             score=final_score,
@@ -421,6 +437,7 @@ def create_app(
             header_score=header_score,
             language=language,
             ai_generated=ai_generated,
+            explanations=explanations_info,
             model_version=variant_name,
         )
 

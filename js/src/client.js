@@ -46,7 +46,8 @@ class TobiraClient {
    * @param {string} text  The text to classify.
    * @param {object} [options]
    * @param {object} [options.headers]  Optional email headers for header-based classification.
-   * @returns {Promise<{label: string, score: number, labels: Object<string, number>, header_score?: number}>}
+   * @param {boolean} [options.explain]  When true, include token-level attribution scores.
+   * @returns {Promise<{label: string, score: number, labels: Object<string, number>, header_score?: number, explanations?: Array<{token: string, score: number}>}>}
    */
   async predict(text, options = {}) {
     const url = `${this.baseUrl}/v1/predict`;
@@ -56,6 +57,9 @@ class TobiraClient {
     const body = { text };
     if (options.headers) {
       body.headers = options.headers;
+    }
+    if (options.explain) {
+      body.explain = true;
     }
 
     try {

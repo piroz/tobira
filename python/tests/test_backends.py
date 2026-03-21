@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from tobira.backends.factory import create_backend
-from tobira.backends.protocol import BackendProtocol, PredictionResult
+from tobira.backends.protocol import BackendProtocol, PredictionResult, TokenAttribution
 
 _has_torch = True
 try:
@@ -34,6 +34,39 @@ class TestPredictionResult:
         assert result.label == "spam"
         assert result.score == 0.9
         assert result.labels == labels
+
+
+class TestTokenAttribution:
+    def test_frozen(self) -> None:
+        attr = TokenAttribution(token="test", score=0.5)
+        with pytest.raises(AttributeError):
+            attr.token = "other"  # type: ignore[misc]
+
+    def test_attributes(self) -> None:
+        attr = TokenAttribution(token="viagra", score=0.82)
+        assert attr.token == "viagra"
+        assert attr.score == 0.82
+
+
+class TestPredictionResultExplanations:
+    def test_explanations_default_none(self) -> None:
+        result = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1}
+        )
+        assert result.explanations is None
+
+    def test_with_explanations(self) -> None:
+        explanations = [
+            TokenAttribution(token="buy", score=0.8),
+            TokenAttribution(token="now", score=0.3),
+        ]
+        result = PredictionResult(
+            label="spam", score=0.9, labels={"spam": 0.9, "ham": 0.1},
+            explanations=explanations,
+        )
+        assert result.explanations is not None
+        assert len(result.explanations) == 2
+        assert result.explanations[0].token == "buy"
 
 
 class TestBackendProtocol:
@@ -205,6 +238,80 @@ class TestBertBackend:
 
         BertBackend(model_name="test-model")
         mock_torch.device.assert_called_with("cuda")
+
+
+    @requires_torch
+    @patch("tobira.backends.bert._import_deps")
+    def test_predict_with_explain(self, mock_import: MagicMock) -> None:
+        mock_model = MagicMock()
+        mock_logits = _torch.tensor([[2.0, 0.5]])
+        # Create mock attention: (batch=1, heads=2, seq=4, seq=4)
+        mock_attention = _torch.rand(1, 2, 4, 4)
+        mock_output = MagicMock()
+        mock_output.logits = mock_logits
+        mock_output.attentions = (mock_attention,)
+        mock_model.return_value = mock_output
+        mock_model.config.id2label = {0: "spam", 1: "ham"}
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.return_value = {"input_ids": _torch.tensor([[101, 2, 3, 102]])}
+        mock_tokenizer.convert_ids_to_tokens.return_value = [
+            "[CLS]", "buy", "now", "[SEP]",
+        ]
+
+        MockAutoModel = MagicMock()
+        MockAutoModel.from_pretrained.return_value = mock_model
+        MockAutoTokenizer = MagicMock()
+        MockAutoTokenizer.from_pretrained.return_value = mock_tokenizer
+
+        mock_import.return_value = (_torch, MockAutoModel, MockAutoTokenizer)
+
+        from tobira.backends.bert import BertBackend
+
+        backend = BertBackend(model_name="test-model", device="cpu")
+        result = backend.predict("buy now", explain=True)
+
+        assert result.label == "spam"
+        assert result.explanations is not None
+        assert len(result.explanations) > 0
+        # Should only contain non-special tokens
+        tokens = [a.token for a in result.explanations]
+        assert "[CLS]" not in tokens
+        assert "[SEP]" not in tokens
+        # Scores should be in [0, 1]
+        for attr in result.explanations:
+            assert 0.0 <= attr.score <= 1.0
+
+    @requires_torch
+    @patch("tobira.backends.bert._import_deps")
+    def test_predict_without_explain(self, mock_import: MagicMock) -> None:
+        mock_model = MagicMock()
+        mock_logits = _torch.tensor([[2.0, 0.5]])
+        mock_output = MagicMock()
+        mock_output.logits = mock_logits
+        mock_model.return_value = mock_output
+        mock_model.config.id2label = {0: "spam", 1: "ham"}
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.return_value = {"input_ids": _torch.tensor([[1, 2, 3]])}
+
+        MockAutoModel = MagicMock()
+        MockAutoModel.from_pretrained.return_value = mock_model
+        MockAutoTokenizer = MagicMock()
+        MockAutoTokenizer.from_pretrained.return_value = mock_tokenizer
+
+        mock_import.return_value = (_torch, MockAutoModel, MockAutoTokenizer)
+
+        from tobira.backends.bert import BertBackend
+
+        backend = BertBackend(model_name="test-model", device="cpu")
+        result = backend.predict("buy now")
+
+        assert result.explanations is None
+        # output_attentions should not have been requested
+        mock_model.assert_called_once()
+        call_kwargs = mock_model.call_args[1]
+        assert call_kwargs.get("output_attentions") is False
 
 
 class TestDeBERTaV3Compatibility:

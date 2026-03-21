@@ -94,6 +94,38 @@ describe("TobiraClient", () => {
         { name: "AbortError" }
       );
     });
+
+    it("should include explain in body when option is true", async () => {
+      globalThis.fetch = mock.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          label: "spam",
+          score: 0.95,
+          labels: { spam: 0.95, ham: 0.05 },
+          explanations: [{ token: "viagra", score: 0.82 }],
+        }),
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      const result = await client.predict("buy viagra", { explain: true });
+
+      const body = JSON.parse(globalThis.fetch.mock.calls[0].arguments[1].body);
+      assert.equal(body.explain, true);
+      assert.deepEqual(result.explanations, [{ token: "viagra", score: 0.82 }]);
+    });
+
+    it("should not include explain in body when option is false", async () => {
+      globalThis.fetch = mock.fn(async () => ({
+        ok: true,
+        json: async () => ({ label: "ham", score: 0.95, labels: { ham: 0.95, spam: 0.05 } }),
+      }));
+
+      const client = new TobiraClient("http://localhost:8000");
+      await client.predict("hello");
+
+      const body = JSON.parse(globalThis.fetch.mock.calls[0].arguments[1].body);
+      assert.equal(body.explain, undefined);
+    });
   });
 
   describe("feedback", () => {

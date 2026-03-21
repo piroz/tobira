@@ -7,13 +7,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tobira.backends.protocol import BackendProtocol, PredictionResult
+from tobira.backends.protocol import BackendProtocol, PredictionResult, TokenAttribution
 from tobira.serving.schemas import (
     MAX_TEXT_LENGTH,
     EmailHeaders,
     HealthResponse,
     PredictRequest,
     PredictResponse,
+    TokenAttributionInfo,
 )
 
 _has_fastapi = True
@@ -91,6 +92,35 @@ class TestSchemas:
             label="spam", score=0.95, labels={"spam": 0.95, "ham": 0.05}
         )
         assert resp.language is None
+
+    def test_predict_request_explain_defaults_false(self) -> None:
+        req = PredictRequest(text="hello")
+        assert req.explain is False
+
+    def test_predict_request_with_explain(self) -> None:
+        req = PredictRequest(text="hello", explain=True)
+        assert req.explain is True
+
+    def test_predict_response_explanations_defaults_none(self) -> None:
+        resp = PredictResponse(
+            label="spam", score=0.95, labels={"spam": 0.95, "ham": 0.05}
+        )
+        assert resp.explanations is None
+
+    def test_predict_response_with_explanations(self) -> None:
+        resp = PredictResponse(
+            label="spam",
+            score=0.95,
+            labels={"spam": 0.95, "ham": 0.05},
+            explanations=[
+                TokenAttributionInfo(token="viagra", score=0.82),
+                TokenAttributionInfo(token="buy", score=0.45),
+            ],
+        )
+        assert resp.explanations is not None
+        assert len(resp.explanations) == 2
+        assert resp.explanations[0].token == "viagra"
+        assert resp.explanations[0].score == pytest.approx(0.82)
 
     def test_health_response(self) -> None:
         resp = HealthResponse(status="ok")
@@ -271,6 +301,75 @@ class TestPredict:
         data = resp.json()
         assert data["header_score"] is None
         assert data["score"] == pytest.approx(0.95)
+
+
+@requires_fastapi
+class TestPredictExplain:
+    def test_predict_explain_false_no_explanations(self) -> None:
+        """Default explain=false returns no explanations."""
+        from tobira.serving.server import create_app
+
+        backend = _make_mock_backend()
+        app = create_app(backend)
+        client = TestClient(app)
+
+        resp = client.post("/v1/predict", json={"text": "buy now!!!"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["explanations"] is None
+
+    def test_predict_explain_true_with_supporting_backend(self) -> None:
+        """explain=true with a backend that returns explanations."""
+        from tobira.serving.server import create_app
+
+        backend = MagicMock(spec=BackendProtocol)
+        backend.predict.return_value = PredictionResult(
+            label="spam",
+            score=0.95,
+            labels={"spam": 0.95, "ham": 0.05},
+            explanations=[
+                TokenAttribution(token="viagra", score=0.82),
+                TokenAttribution(token="buy", score=0.45),
+            ],
+        )
+        app = create_app(backend)
+        client = TestClient(app)
+
+        resp = client.post(
+            "/v1/predict", json={"text": "buy viagra now", "explain": True}
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["explanations"] is not None
+        assert len(data["explanations"]) == 2
+        assert data["explanations"][0]["token"] == "viagra"
+        assert data["explanations"][0]["score"] == pytest.approx(0.82)
+
+    def test_predict_explain_true_unsupported_backend(self) -> None:
+        """explain=true with a backend that doesn't support explain kwarg."""
+        from tobira.serving.server import create_app
+
+        backend = MagicMock(spec=BackendProtocol)
+        # Simulate a backend that doesn't accept explain kwarg
+        def predict_no_explain(text: str, **kwargs: object) -> PredictionResult:
+            if kwargs:
+                raise TypeError("predict() got unexpected keyword argument")
+            return PredictionResult(
+                label="spam", score=0.95, labels={"spam": 0.95, "ham": 0.05}
+            )
+        backend.predict.side_effect = predict_no_explain
+        app = create_app(backend)
+        client = TestClient(app)
+
+        resp = client.post(
+            "/v1/predict", json={"text": "buy now!!!", "explain": True}
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["explanations"] is None
 
 
 @requires_fastapi

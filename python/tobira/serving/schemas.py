@@ -88,6 +88,18 @@ class PredictRequest(BaseModel):
         description="ISO 639-1 language code (e.g. 'ja', 'en', 'ko'). "
         "When omitted, language is auto-detected.",
     )
+    explain: bool = Field(
+        default=False,
+        description="When true, include token-level attribution scores "
+        "in the response (supported backends only).",
+    )
+
+
+class TokenAttributionInfo(BaseModel):
+    """Token-level attribution score for explainability."""
+
+    token: str
+    score: float = Field(description="Attribution score (0.0-1.0).")
 
 
 class AIGeneratedInfo(BaseModel):
@@ -159,6 +171,12 @@ class PredictResponse(BaseModel):
         default=None,
         description="AI-generated text detection result. "
         "Present only when ai_detection is enabled in server config.",
+    )
+    explanations: list[TokenAttributionInfo] | None = Field(
+        default=None,
+        description="Token-level attribution scores. "
+        "Present only when explain=true in the request and "
+        "the backend supports explainability.",
     )
     model_version: str | None = Field(
         default=None,
