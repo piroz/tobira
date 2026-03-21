@@ -63,7 +63,7 @@ tobira = "tobira.cli:main"
 #   my_backend = "my_package.backend:MyBackendClass"
 
 [project.urls]
-Repository = "https://github.com/velocitylabo-org/tobira"
+Repository = "https://github.com/velocitylabo/tobira"
 
 [dependency-groups]
 dev = [

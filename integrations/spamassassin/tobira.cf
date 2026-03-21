@@ -1,5 +1,5 @@
 # Tobira SpamAssassin Plugin Configuration
-# https://github.com/velocitylabo-org/tobira
+# https://github.com/velocitylabo/tobira
 
 # Load the plugin
 loadplugin Mail::SpamAssassin::Plugin::Tobira Tobira.pm
