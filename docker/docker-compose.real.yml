@@ -1,0 +1,88 @@
+# Docker Compose configuration using the REAL tobira API server.
+#
+# Uses Ollama as the ML backend instead of the rule-based mock.
+# Requires ~2GB disk for the gemma2:2b model (downloaded on first run).
+#
+# Usage:
+#   docker compose -f docker-compose.real.yml up --build -d
+#   docker compose -f docker-compose.real.yml logs -f tobira-api
+#   docker compose -f docker-compose.real.yml down
+
+services:
+  # Ollama LLM server
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Pull the model on first run
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["ollama", "pull", "gemma2:2b"]
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+
+  # Real tobira API server (Ollama backend)
+  tobira-api:
+    build:
+      context: ../
+      dockerfile: docker/api-real/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Haraka MTA with tobira plugin
+  haraka:
+    build:
+      context: ../
+      dockerfile: docker/haraka/Dockerfile
+    ports:
+      - "2525:25"
+    depends_on:
+      tobira-api:
+        condition: service_healthy
+
+  # Rspamd with tobira plugin
+  rspamd:
+    build:
+      context: ../
+      dockerfile: docker/rspamd/Dockerfile
+    ports:
+      - "11333:11333"
+      - "11334:11334"
+    depends_on:
+      tobira-api:
+        condition: service_healthy
+
+  # SpamAssassin with tobira plugin
+  spamassassin:
+    build:
+      context: ../
+      dockerfile: docker/spamassassin/Dockerfile
+    ports:
+      - "783:783"
+    depends_on:
+      tobira-api:
+        condition: service_healthy
+
+volumes:
+  ollama-data:

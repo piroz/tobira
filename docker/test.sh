@@ -53,7 +53,7 @@ wait_for() {
   return 1
 }
 
-wait_for "tobira-api" "curl -sf --max-time 2 http://localhost:8000/health"
+wait_for "tobira-api" "curl -sf --max-time 2 http://localhost:8000/v1/health"
 wait_for "haraka"     "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',2525)); s.close()\""
 wait_for "rspamd"     "curl -sf --max-time 2 http://localhost:11334/ping"
 wait_for "spamassassin" "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',783)); s.close()\""
@@ -67,44 +67,44 @@ echo "=== tobira API (mock server) ==="
 api_ok=false
 
 # health check
-if curl -sf --max-time 5 http://localhost:8000/health | grep -q '"ok"'; then
-  ok "GET /health"
+if curl -sf --max-time 5 http://localhost:8000/v1/health | grep -q '"ok"'; then
+  ok "GET /v1/health"
   api_ok=true
 else
-  ng "GET /health - is tobira-api running?"
+  ng "GET /v1/health - is tobira-api running?"
 fi
 
 if $api_ok; then
   # ham prediction
-  ham_resp=$(curl -sf --max-time 5 -X POST http://localhost:8000/predict \
+  ham_resp=$(curl -sf --max-time 5 -X POST http://localhost:8000/v1/predict \
     -H 'Content-Type: application/json' \
     -d '{"text":"Hello, this is a normal email about our meeting tomorrow."}') || ham_resp=""
 
   if [ -n "$ham_resp" ]; then
     ham_label=$(json_field "$ham_resp" "label")
     if [ "$ham_label" = "ham" ]; then
-      ok "predict ham: $ham_resp"
+      ok "/v1/predict ham: $ham_resp"
     else
-      ng "predict ham: expected ham, got $ham_label ($ham_resp)"
+      ng "/v1/predict ham: expected ham, got $ham_label ($ham_resp)"
     fi
   else
-    ng "predict ham: no response from API"
+    ng "/v1/predict ham: no response from API"
   fi
 
   # spam prediction
-  spam_resp=$(curl -sf --max-time 5 -X POST http://localhost:8000/predict \
+  spam_resp=$(curl -sf --max-time 5 -X POST http://localhost:8000/v1/predict \
     -H 'Content-Type: application/json' \
     -d '{"text":"Buy now! Free offer! Click here for your lottery winner prize!"}') || spam_resp=""
 
   if [ -n "$spam_resp" ]; then
     spam_label=$(json_field "$spam_resp" "label")
     if [ "$spam_label" = "spam" ]; then
-      ok "predict spam: $spam_resp"
+      ok "/v1/predict spam: $spam_resp"
     else
-      ng "predict spam: expected spam, got $spam_label ($spam_resp)"
+      ng "/v1/predict spam: expected spam, got $spam_label ($spam_resp)"
     fi
   else
-    ng "predict spam: no response from API"
+    ng "/v1/predict spam: no response from API"
   fi
 else
   warn "skipping API predict tests (health check failed)"

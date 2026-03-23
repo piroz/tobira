@@ -1,0 +1,21 @@
+# tobira real API server configuration (Ollama backend)
+#
+# Uses a local Ollama instance for spam classification.
+# Model is lightweight and runs on CPU.
+
+[backend]
+type = "ollama"
+model = "gemma2:2b"
+base_url = "http://ollama:11434"
+timeout = 30
+few_shot_lang = "en"
+
+[serving]
+# No API key for local testing
+# api_key = "your-secret-key"
+
+[monitoring]
+enabled = false
+
+[feedback]
+enabled = false

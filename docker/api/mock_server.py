@@ -63,12 +63,12 @@ def _classify(text: str) -> PredictResponse:
     )
 
 
-@app.post("/predict", response_model=PredictResponse)
+@app.post("/v1/predict", response_model=PredictResponse)
 async def predict(req: PredictRequest) -> PredictResponse:
     return _classify(req.text)
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/v1/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
@@ -82,11 +82,11 @@ class LivenessResponse(BaseModel):
     alive: bool
 
 
-@app.get("/health/ready", response_model=ReadinessResponse)
+@app.get("/v1/health/ready", response_model=ReadinessResponse)
 async def health_ready() -> ReadinessResponse:
     return ReadinessResponse(ready=True)
 
 
-@app.get("/health/live", response_model=LivenessResponse)
+@app.get("/v1/health/live", response_model=LivenessResponse)
 async def health_live() -> LivenessResponse:
     return LivenessResponse(alive=True)

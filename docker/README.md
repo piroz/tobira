@@ -44,7 +44,7 @@ docker compose up --build -d tobira-api spamassassin
 
 ```bash
 # API 直接テスト
-curl -X POST http://localhost:8000/predict \
+curl -X POST http://localhost:8000/v1/predict \
   -H 'Content-Type: application/json' \
   -d '{"text": "Buy now! Free offer! Click here!"}'
 

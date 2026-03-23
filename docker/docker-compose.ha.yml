@@ -5,8 +5,8 @@
 #
 # Usage:
 #   docker compose -f docker-compose.ha.yml up --build -d
-#   curl http://localhost:8000/health
-#   curl http://localhost:8000/health/ready
+#   curl http://localhost:8000/v1/health
+#   curl http://localhost:8000/v1/health/ready
 #   docker compose -f docker-compose.ha.yml down
 
 services:
@@ -16,7 +16,7 @@ services:
     expose:
       - "8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health/ready')"]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -34,7 +34,7 @@ services:
     expose:
       - "8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health/ready')"]
       interval: 5s
       timeout: 3s
       retries: 3
