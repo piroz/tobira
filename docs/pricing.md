@@ -62,16 +62,12 @@ Hybrid cloud model — inference stays on-premise, training runs on our GPU infr
 
 Enterprise and Cloud plans are currently in development. Join the waitlist to get early access and help shape the product.
 
-<div class="waitlist-form" markdown>
-
 [:material-email-outline: Join the Waitlist](https://forms.gle/6HXu1Xbk13cKYUa39){ .md-button .md-button--primary target="_blank" }
 
 !!! info "What happens next?"
     1. Fill out a short form (email, organization, deployment scale)
     2. We'll reach out to understand your requirements
     3. Early waitlist members get priority access and input on feature prioritization
-
-</div>
 
 ## FAQ
 
