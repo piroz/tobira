@@ -1,0 +1,35 @@
+name: "Release: PyPI"
+
+on:
+  push:
+    tags:
+      - "tobira-python-v*"
+
+concurrency:
+  group: release-pypi
+  cancel-in-progress: false
+
+jobs:
+  publish-pypi:
+    runs-on: ubuntu-latest
+    environment: pypi-publish
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/
