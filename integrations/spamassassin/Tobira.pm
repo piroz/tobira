@@ -188,8 +188,20 @@ sub _call_api {
         return (undef, undef);
     }
 
-    dbg("tobira: label=$label score=$score");
-    return ($label, $score);
+    # Compute spam probability from the response
+    my $spam_score;
+    if ($data->{labels} && defined $data->{labels}{spam}) {
+        $spam_score = $data->{labels}{spam};
+    } elsif ($label eq "spam") {
+        $spam_score = $score;
+    } elsif ($label eq "ham") {
+        $spam_score = 1.0 - $score;
+    } else {
+        $spam_score = $score;
+    }
+
+    dbg("tobira: label=$label score=$score spam_score=$spam_score");
+    return ($label, $spam_score);
 }
 
 1;
