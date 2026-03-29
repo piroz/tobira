@@ -16,8 +16,12 @@
   },
   "license": "MIT",
   "keywords": [
-    "gateway",
     "spam",
+    "email",
+    "spam-detection",
+    "machine-learning",
+    "mail-server",
+    "mta",
     "classification"
   ],
   "devDependencies": {
