@@ -2,33 +2,14 @@
 
 **ML-powered spam detection toolkit for mail servers.**
 
-Add modern ML-based spam classification to your existing mail infrastructure — SpamAssassin, rspamd, Haraka, or Postfix — without ML expertise.
+Add ML-based spam classification to your existing mail infrastructure — rspamd, SpamAssassin, Haraka, or Postfix — without ML expertise.
 
 [![PyPI version](https://img.shields.io/pypi/v/tobira)](https://pypi.org/project/tobira/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-1%2C200%2B%20passed-brightgreen)](https://github.com/velocitylabo/tobira)
 
-## Features
-
-- **Pluggable backends** — swap inference engines without changing your setup
-- **MTA integration** — plugins for rspamd, SpamAssassin, Haraka, and Postfix (milter)
-- **CLI toolkit** — train, evaluate, serve, and monitor from a single command
-- **Production-ready API** — FastAPI server with health checks, auth, and monitoring
-- **Fail-open design** — graceful degradation when the ML service is unavailable
-
-## Backends
-
-| Backend | Description | Use case |
-|---------|------------|----------|
-| **FastText** | Linear classifier, very fast | High-throughput / low-resource |
-| **BERT** | Transformer fine-tuning | Highest accuracy |
-| **ONNX** | Quantized BERT inference | Fast + accurate |
-| **LLM API** | OpenAI-compatible APIs | Zero training data needed |
-| **Ollama** | Local LLM inference | Privacy-first / air-gapped |
-| **Two-Stage** | FastText screening → BERT precision | Balanced throughput + accuracy |
-| **Ensemble** | Weighted voting across models | Maximum reliability |
-
-Custom backends can be added via the `tobira.backends` entry point.
+**[Documentation](https://velocitylabo.github.io/tobira)** | **[GitHub](https://github.com/velocitylabo/tobira)** | **[Roadmap](https://velocitylabo.github.io/tobira/roadmap/)**
 
 ## Quick Start
 
@@ -61,9 +42,23 @@ print(resp.json())
 # {"label": "spam", "score": 0.98, "labels": {"spam": 0.98, "ham": 0.02}}
 ```
 
+## Backends
+
+| Backend | Use case | Latency |
+|---------|----------|---------|
+| **FastText** | High-throughput / low-resource | ~1ms |
+| **BERT** | Highest accuracy | ~50ms (GPU) |
+| **ONNX** | Fast + accurate (quantized) | ~30ms (CPU) |
+| **LLM API** | Zero training data needed | Varies |
+| **Ollama** | Privacy-first / air-gapped | Varies |
+| **Two-Stage** | FastText screening → BERT precision | ~5ms avg |
+| **Ensemble** | Maximum reliability | Varies |
+
+Swap backends by changing one line in `tobira.toml`. Custom backends can be added via the `tobira.backends` entry point.
+
 ## MTA Integration
 
-tobira provides ready-to-use plugins for major MTAs:
+Ready-to-use plugins — all support fail-open mode and tiered spam scoring:
 
 | MTA | Plugin | Config file |
 |-----|--------|-------------|
@@ -72,36 +67,7 @@ tobira provides ready-to-use plugins for major MTAs:
 | Haraka | Node.js plugin | `tobira.ini` |
 | Postfix | milter (`tobira milter`) | `tobira-milter.conf` |
 
-All plugins support:
-- Configurable API endpoint and timeout
-- Fail-open mode (skip ML on API errors)
-- Tiered spam scoring (high / medium / low confidence)
-- Optional header forwarding (SPF / DKIM / DMARC)
-
-## CLI Commands
-
-```
-tobira serve          Start the prediction API server
-tobira init           Detect MTA and generate config
-tobira doctor         Verify config, backends, and connectivity
-tobira train          Fine-tune a model on your labeled data
-tobira evaluate       Evaluate model accuracy on a test set
-tobira monitor        Analyze prediction logs for drift (PSI, KS)
-tobira hub-push/pull  Share models via Hugging Face Hub
-tobira distill        Knowledge distillation (teacher → student)
-tobira demo           Launch a Docker Compose demo environment
-tobira milter         Start the Postfix milter daemon
-```
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/predict` | Classify text as spam/ham |
-| POST | `/feedback` | Submit correction feedback |
-| GET | `/v1/health` | Health check |
-| GET | `/v1/health/ready` | Readiness probe (Kubernetes) |
-| GET | `/v1/health/live` | Liveness probe |
+See [MTA Tutorials](https://velocitylabo.github.io/tobira/mta/) for step-by-step guides.
 
 ## Installation Options
 
@@ -121,6 +87,25 @@ pip install tobira[serving,fasttext]
 # All features
 pip install tobira[serving,fasttext,bert,onnx,llm,evaluation,hub]
 ```
+
+## CLI Commands
+
+```
+tobira init           Detect MTA and generate config
+tobira serve          Start the prediction API server
+tobira doctor         Verify config, backends, and connectivity
+tobira demo           Launch a Docker Compose demo environment
+tobira train          Fine-tune a model on your labeled data
+tobira evaluate       Evaluate model accuracy on a test set
+tobira monitor        Analyze prediction logs for drift (PSI, KS)
+tobira distill        Knowledge distillation (teacher → student)
+tobira hub-push/pull  Share models via Hugging Face Hub
+tobira milter         Start the Postfix milter daemon
+```
+
+## Documentation
+
+Full documentation at **[velocitylabo.github.io/tobira](https://velocitylabo.github.io/tobira)** — MTA integration tutorials, CLI reference, API reference, deployment guides, and pricing.
 
 ## License
 

@@ -4,39 +4,61 @@ tobira is open source and free to use. For organizations that need enterprise-gr
 
 ## Plans
 
-| | **Community** | **Enterprise** | **Cloud** |
-|---|---|---|---|
-| **Price** | Free | Contact us | Contact us |
-| **License** | MIT | Commercial | Commercial |
-| **Inference backends** | All (FastText, BERT, ONNX, Ollama, LLM API, Ensemble) | All | All |
-| **MTA plugins** | All (rspamd, SpamAssassin, Haraka, Postfix milter) | All | All |
-| **CLI tools** | Full (`init`, `doctor`, `monitor`, `train`, `evaluate`, `demo`) | Full | Full |
-| **Single-tenant deployment** | :material-check: | :material-check: | :material-check: |
-| **Multi-tenant management** | | :material-check: | :material-check: |
-| **RBAC + audit logs** | | :material-check: | :material-check: |
-| **OpenTelemetry integration** | | :material-check: | :material-check: |
-| **Grafana dashboard templates** | | :material-check: | :material-check: |
-| **SSO (SAML / OIDC)** | | :material-check: | :material-check: |
-| **Cloud-based model training** | | | :material-check: |
-| **Managed GPU resources** | | | :material-check: |
-| **Priority support + SLA** | | :material-check: | :material-check: |
+### Available Now
+
+| | **Community** |
+|---|---|
+| **Price** | Free |
+| **License** | MIT |
+| **MTA plugins** | All (rspamd, SpamAssassin, Haraka, Postfix milter) |
+| **Inference backends** | All (FastText, BERT, ONNX, Ollama, LLM API, Two-Stage, Ensemble) |
+| **CLI tools** | Full (`init`, `doctor`, `monitor`, `train`, `evaluate`, `demo`, `distill`, `hub-push/pull`) |
+| **Single-tenant deployment** | :material-check: |
+| **Docker / Kubernetes deployment** | :material-check: |
+| **Web dashboard** | :material-check: |
+| **A/B testing** | :material-check: |
+| **Active learning** | :material-check: |
+| **Knowledge distillation** | :material-check: |
+| **AI-generated text detection** | :material-check: |
+
+### Planned
+
+| | **Enterprise** | **Cloud** |
+|---|---|---|
+| **Price** | Contact us | Contact us |
+| **License** | Commercial | Commercial |
+| **Includes all Community features** | :material-check: | :material-check: |
+| **Multi-tenant management** | Planned | Planned |
+| **RBAC + audit logs** | Planned | Planned |
+| **OpenTelemetry integration** | Planned | Planned |
+| **Grafana dashboard templates** | Planned | Planned |
+| **SSO (SAML / OIDC)** | Planned | Planned |
+| **Cloud-based model training** | | Planned |
+| **Managed GPU resources** | | Planned |
+| **Priority support + SLA** | Planned | Planned |
 
 ## Community (Free)
 
 The open-source core includes everything you need to deploy ML-powered spam detection:
 
-- All inference backends with full functionality
-- All MTA plugins for major mail servers
-- CLI-driven guided setup, diagnostics, and monitoring
+- All MTA plugins for major mail servers (rspamd, SpamAssassin, Haraka, Postfix milter)
+- All inference backends with full functionality (FastText, BERT, ONNX, Ollama, LLM API, Ensemble)
+- CLI-driven guided setup (`tobira init`), diagnostics (`tobira doctor`), and monitoring
+- Docker Compose and Kubernetes deployment with health checks
+- Web dashboard for real-time monitoring
 - GDPR-aware PII anonymization for training data
-- Docker Compose deployment with health checks
+- A/B testing framework for model comparison
+- Active learning with uncertainty-based sampling
+- Knowledge distillation (teacher → student model compression)
+- AI-generated text detection
+- HuggingFace Hub integration for model sharing
 - Community support via GitHub Issues and Discussions
 
 [Get Started](getting-started/quickstart.md){ .md-button .md-button--primary }
 
 ## Enterprise
 
-For organizations running tobira across multiple teams or domains:
+For organizations running tobira across multiple teams or domains. All features below are **planned for 2026 H2** — see our [Roadmap](roadmap.md) for details.
 
 - **Multi-tenant management** — Isolated configurations per tenant with centralized administration
 - **RBAC + audit logs** — Role-based access control with full audit trail
@@ -48,7 +70,7 @@ For organizations running tobira across multiple teams or domains:
 
 ## Cloud
 
-Hybrid cloud model — inference stays on-premise, training runs on our GPU infrastructure:
+Hybrid cloud model — inference stays on-premise, training runs on our GPU infrastructure. All features below are **planned for 2027** — see our [Roadmap](roadmap.md) for details.
 
 - **Cloud-based training** — Upload anonymized data, train models on managed GPUs, download results
 - **Managed infrastructure** — No GPU procurement or maintenance required
@@ -60,7 +82,7 @@ Hybrid cloud model — inference stays on-premise, training runs on our GPU infr
 
 ## Waitlist { #waitlist }
 
-Enterprise and Cloud plans are currently in development. Join the waitlist to get early access and help shape the product.
+Enterprise and Cloud plans are in the planning stage. Join the waitlist to get early access and help shape the product.
 
 [:material-email-outline: Join the Waitlist](https://forms.gle/6HXu1Xbk13cKYUa39){ .md-button .md-button--primary target="_blank" }
 
@@ -85,4 +107,4 @@ Pricing details will be finalized based on early adopter feedback. Waitlist memb
 
 ### Can I try Enterprise features before committing?
 
-We plan to offer a trial period for Enterprise features. Join the waitlist to be notified when trials become available.
+We plan to offer a trial period once Enterprise features are available. Join the waitlist to be notified when trials become available.

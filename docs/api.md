@@ -28,7 +28,8 @@ Classify email text as spam or ham.
     "received": ["from mail.example.com ..."],
     "content_type": "text/plain"
   },
-  "language": "ja"
+  "language": "ja",
+  "explain": true
 }
 ```
 
@@ -37,6 +38,7 @@ Classify email text as spam or ham.
 | `text` | string | Yes | Email text (max 100 KB) |
 | `headers` | object | No | Email headers for header-based scoring |
 | `language` | string | No | ISO 639-1 language code |
+| `explain` | boolean | No | Return token-level attribution explanations |
 
 **Response**
 
@@ -54,7 +56,12 @@ Classify email text as spam or ham.
     "detected": false,
     "confidence": 0.12,
     "indicators": []
-  }
+  },
+  "explanations": [
+    {"token": "Congratulations", "score": 0.42},
+    {"token": "won", "score": 0.31}
+  ],
+  "model_version": "fasttext-v1"
 }
 ```
 
@@ -66,6 +73,8 @@ Classify email text as spam or ham.
 | `header_score` | float | Header-based risk score (if enabled) |
 | `language` | string | Detected or provided language |
 | `ai_generated` | object | AI-generated text detection (if enabled) |
+| `explanations` | array | Token-level attribution (when `explain: true`) |
+| `model_version` | string | Model variant used (visible during A/B testing) |
 
 ### `GET /health`
 
@@ -76,6 +85,39 @@ Check server health status.
 ```json
 {
   "status": "ok"
+}
+```
+
+### `GET /health/ready`
+
+Kubernetes readiness probe. Returns `200` when the server is ready to accept traffic.
+
+**Response**
+
+```json
+{
+  "ready": true
+}
+```
+
+When not ready:
+
+```json
+{
+  "ready": false,
+  "reason": "model loading"
+}
+```
+
+### `GET /health/live`
+
+Kubernetes liveness probe. Returns `200` when the server process is alive.
+
+**Response**
+
+```json
+{
+  "alive": true
 }
 ```
 
@@ -97,7 +139,7 @@ Submit feedback on a classification result. Available when feedback collection i
 |-------|------|----------|-------------|
 | `text` | string | Yes | Email text |
 | `label` | string | Yes | Correct label (`spam` or `ham`) |
-| `source` | string | Yes | Feedback source identifier |
+| `source` | string | No | Feedback source identifier (default: `"unknown"`) |
 
 **Response**
 
@@ -111,6 +153,118 @@ Submit feedback on a classification result. Available when feedback collection i
 ### `GET /dashboard`
 
 Web dashboard for monitoring predictions and performance. Available when the dashboard is enabled in configuration.
+
+## Active Learning Endpoints
+
+Available when active learning is enabled in configuration. Items are automatically added to the queue during prediction when the model's uncertainty exceeds a configured threshold.
+
+### `GET /v1/active-learning/queue`
+
+Retrieve queued items sorted by uncertainty score.
+
+**Response**
+
+```json
+{
+  "samples": [
+    {
+      "id": "abc-123",
+      "text": "Check this limited offer...",
+      "score": 0.55,
+      "labels": {"spam": 0.55, "ham": 0.45},
+      "uncertainty": 0.99,
+      "strategy": "entropy",
+      "timestamp": "2025-01-01T00:00:00+00:00",
+      "labeled": false,
+      "assigned_label": null
+    }
+  ],
+  "total": 1,
+  "pending": 1,
+  "labeled": 0
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `samples` | array | Queued samples sorted by uncertainty |
+| `total` | integer | Total samples in queue |
+| `pending` | integer | Unlabeled samples |
+| `labeled` | integer | Labeled samples |
+
+### `POST /v1/active-learning/label`
+
+Submit a label for an active learning sample.
+
+**Request**
+
+```json
+{
+  "sample_id": "abc-123",
+  "label": "spam"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sample_id` | string | Yes | ID of the sample to label |
+| `label` | string | Yes | Label value (`spam` or `ham`) |
+
+**Response**
+
+```json
+{
+  "status": "labeled",
+  "sample_id": "abc-123",
+  "label": "spam"
+}
+```
+
+### `GET /v1/active-learning/stats`
+
+Retrieve statistics about the active learning queue.
+
+**Response**
+
+```json
+{
+  "total": 42,
+  "pending": 15,
+  "labeled": 27,
+  "label_counts": {"spam": 20, "ham": 7}
+}
+```
+
+## A/B Testing
+
+Available when A/B testing is configured. The server automatically routes `/predict` requests to model variants based on the configured strategy (random or hash-based). The `model_version` field in predict responses indicates which variant was used.
+
+### `GET /api/ab-test/results`
+
+Retrieve A/B test results with per-variant metrics.
+
+**Response**
+
+```json
+{
+  "variants": {
+    "fasttext-v1": {
+      "predictions": 5200,
+      "avg_latency_ms": 2.1,
+      "avg_score": 0.82,
+      "label_counts": {"spam": 3100, "ham": 2100},
+      "errors": 0
+    },
+    "onnx-v2": {
+      "predictions": 4800,
+      "avg_latency_ms": 28.5,
+      "avg_score": 0.89,
+      "label_counts": {"spam": 2900, "ham": 1900},
+      "errors": 3
+    }
+  }
+}
+```
 
 ## Error Responses
 

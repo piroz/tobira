@@ -8,6 +8,8 @@ A lightweight Node.js SDK for integrating with tobira's ML-powered email spam cl
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js 18+](https://img.shields.io/badge/node-18%2B-green.svg)](https://nodejs.org/)
 
+**[Documentation](https://velocitylabo.github.io/tobira)** | **[GitHub](https://github.com/velocitylabo/tobira)** | **[Python Package](https://pypi.org/project/tobira/)**
+
 ## Install
 
 ```bash
@@ -92,12 +94,16 @@ const status = await client.health();
 
 ## Use with Haraka
 
-tobira includes a ready-to-use Haraka plugin. See [integrations/haraka](https://github.com/velocitylabo/tobira/tree/main/integrations/haraka) for setup instructions.
+tobira includes a ready-to-use Haraka plugin. See the [Haraka integration guide](https://velocitylabo.github.io/tobira/mta/haraka/) for setup instructions.
 
 ## Requirements
 
 - Node.js >= 18.0.0
 - A running tobira API server (see [tobira on PyPI](https://pypi.org/project/tobira/))
+
+## Documentation
+
+Full documentation is available at **[velocitylabo.github.io/tobira](https://velocitylabo.github.io/tobira)**, including server setup, MTA integration tutorials, and API reference.
 
 ## License
 

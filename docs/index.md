@@ -6,11 +6,17 @@ tobira bridges modern ML models (BERT, ONNX, LLMs) with existing mail transfer a
 
 ## Key Features
 
-- **Multiple inference backends** — FastText, BERT, ONNX, Ollama, LLM API, ensemble, and two-stage filtering
-- **MTA plugins** — rspamd (Lua), SpamAssassin (Perl), Haraka (Node.js), Postfix milter (Python)
-- **CLI tools** — `tobira init` for guided setup, `tobira doctor` for diagnostics, `tobira monitor` for drift detection
+- **4 MTA plugins** — rspamd (Lua), SpamAssassin (Perl), Haraka (Node.js), Postfix milter (Python). No MTA replacement needed.
+- **No ML expertise required** — `tobira init` detects your MTA and generates config. `tobira doctor` validates your setup.
+- **7 inference backends** — FastText, BERT, ONNX, Ollama, LLM API, Ensemble, and Two-Stage filtering. Swap backends without changing your setup.
+- **Production-ready** — Docker Compose / Kubernetes deployment, health checks, fail-open mode. 1,200+ tests.
+- **A/B testing** — Compare models in production with random or hash-based traffic splitting
+- **Active learning** — Uncertainty-based sampling to prioritize labeling effort
+- **Web dashboard** — Real-time prediction stats, score distribution, and drift visualization
+- **Knowledge distillation** — Compress large teacher models into lightweight student models
+- **AI-generated text detection** — Heuristic-based detection of machine-generated content
+- **HuggingFace Hub integration** — Push and pull models with auto-generated model cards
 - **GDPR-aware** — PII anonymization with regex + NER (GiNZA) for training data
-- **Production-ready** — Docker Compose deployment, health checks, fail-open mode
 
 ## Architecture
 
@@ -25,6 +31,7 @@ MTA (Postfix, etc.)
                           ├── OnnxBackend
                           ├── OllamaBackend
                           ├── LlmApiBackend
+                          ├── TwoStageBackend
                           └── EnsembleBackend
 ```
 
@@ -36,6 +43,7 @@ MTA (Postfix, etc.)
 - [API Reference](api.md) — HTTP endpoint documentation
 - [Deployment Guide](getting-started/phased-rollout.md) — Phased rollout strategy
 - [Pricing](pricing.md) — Community, Enterprise, and Cloud plans
+- [Roadmap](roadmap.md) — Planned features and timeline
 
 ## Installation
 

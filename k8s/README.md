@@ -18,3 +18,7 @@ Edit the YAML files directly to match your environment:
 - `service.yaml` — Service type and port
 
 For a more flexible deployment, use the [Helm chart](../charts/tobira/).
+
+## Documentation
+
+See the [Deployment Guide](https://velocitylabo.github.io/tobira/getting-started/phased-rollout/) for phased rollout strategies.

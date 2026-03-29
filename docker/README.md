@@ -85,3 +85,7 @@ docker compose down
 - キーワードなし → `ham` (score=0.81〜1.00)
 
 キーワード: `buy now`, `free offer`, `click here`, `viagra`, `lottery`, `winner`, `urgent`, `act now`, `limited time`, `casino`, `cheap`, `discount`
+
+## 詳細ドキュメント
+
+[velocitylabo.github.io/tobira](https://velocitylabo.github.io/tobira) — MTA統合チュートリアル、デプロイメントガイドなど

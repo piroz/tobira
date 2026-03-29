@@ -53,3 +53,7 @@ For users who prefer not to use Helm, plain Kubernetes manifests are available i
 ```bash
 kubectl apply -f k8s/
 ```
+
+## Documentation
+
+See the full documentation at **[velocitylabo.github.io/tobira](https://velocitylabo.github.io/tobira)** for deployment strategies, MTA integration guides, and configuration reference.
