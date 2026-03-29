@@ -16,9 +16,13 @@
   "license": "MIT",
   "keywords": [
     "haraka",
+    "haraka-plugin",
     "plugin",
     "spam",
-    "tobira"
+    "spam-detection",
+    "email",
+    "tobira",
+    "machine-learning"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",

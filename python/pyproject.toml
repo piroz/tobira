@@ -9,6 +9,32 @@ description = "tobira - gateway toolkit"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
+keywords = [
+    "spam",
+    "email",
+    "spam-detection",
+    "machine-learning",
+    "mail-server",
+    "fasttext",
+    "bert",
+    "mta",
+    "rspamd",
+    "spamassassin",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Email :: Filters",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = []
 
 [project.optional-dependencies]
